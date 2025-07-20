@@ -12,6 +12,7 @@ import Register from './pages/Register'
 import ProtectedRoute from './components/ProtectedRoute'
 import { BudgetProvider, useBudget } from './context/BudgetContext'
 import { AuthProvider } from './context/AuthContext'
+import { UserProvider } from './context/UserContext'
 import { Menu } from 'lucide-react'
 
 function ThemeEffect() {
@@ -89,9 +90,10 @@ function App() {
 
   return (
     <AuthProvider>
-      <BudgetProvider>
-        <ThemeEffect />
-        <Router>
+      <UserProvider>
+        <BudgetProvider>
+          <ThemeEffect />
+          <Router>
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
@@ -149,7 +151,8 @@ function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
-      </BudgetProvider>
+        </BudgetProvider>
+      </UserProvider>
     </AuthProvider>
   )
 }

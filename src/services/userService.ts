@@ -12,7 +12,7 @@ import {
   Timestamp 
 } from 'firebase/firestore'
 import { db } from '../config/firebase'
-import { User } from '../types'
+
 
 export interface UserProfile {
   uid: string

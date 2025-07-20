@@ -1,0 +1,143 @@
+name: Fallback Deployment (Netlify/Vercel)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deployment target'
+        required: true
+        default: 'netlify'
+        type: choice
+        options:
+        - netlify
+        - vercel
+        - surge
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifacts-id: ${{ steps.upload.outputs.artifact-id }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build project
+      run: npm run build
+      env:
+        VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyBJmLC5ksvbQ26QpW04UeTMG3n0YQ5wjQg' }}
+        VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'budgetapp-254a2.firebaseapp.com' }}
+        VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || 'budgetapp-254a2' }}
+        VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'budgetapp-254a2.firebasestorage.app' }}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '159607987904' }}
+        VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:159607987904:web:a6996f58714c9e57635725' }}
+    
+    - name: Upload build artifacts
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-files
+        path: dist/
+        retention-days: 1
+
+  deploy-netlify:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event.inputs.target == 'netlify' || github.event.inputs.target == '')
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-files
+        path: dist/
+    
+    - name: Deploy to Netlify
+      uses: nwtgck/actions-netlify@v2.0
+      with:
+        publish-dir: './dist'
+        production-branch: main
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        deploy-message: "Deploy from GitHub Actions (Fallback)"
+        enable-pull-request-comment: true
+        enable-commit-comment: true
+        overwrites-pull-request-comment: true
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      continue-on-error: true
+
+  deploy-vercel:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event.inputs.target == 'vercel'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-files
+        path: dist/
+    
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: ./
+        vercel-args: '--prod'
+        github-comment: true
+      continue-on-error: true
+
+  deploy-surge:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event.inputs.target == 'surge'
+    
+    steps:
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-files
+        path: dist/
+    
+    - name: Install Surge
+      run: npm install -g surge
+    
+    - name: Deploy to Surge
+      run: |
+        echo "budgetapp-optimized.surge.sh" > dist/CNAME
+        surge dist/ budgetapp-optimized.surge.sh --token ${{ secrets.SURGE_TOKEN }}
+      env:
+        SURGE_TOKEN: ${{ secrets.SURGE_TOKEN }}
+      continue-on-error: true
+
+  notify:
+    needs: [build, deploy-netlify, deploy-vercel, deploy-surge]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Deployment Summary
+      run: |
+        echo "🚀 Deployment completed!"
+        echo "📊 Build Status: ${{ needs.build.result }}"
+        echo "🌐 Netlify Status: ${{ needs.deploy-netlify.result }}"
+        echo "⚡ Vercel Status: ${{ needs.deploy-vercel.result }}"
+        echo "🌊 Surge Status: ${{ needs.deploy-surge.result }}"

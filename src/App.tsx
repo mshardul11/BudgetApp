@@ -10,6 +10,7 @@ import Profile from './pages/Profile'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ProtectedRoute from './components/ProtectedRoute'
+import { SyncStatus } from './components/SyncStatus'
 import { BudgetProvider, useBudget } from './context/BudgetContext'
 import { AuthProvider } from './context/AuthContext'
 import { UserProvider } from './context/UserContext'
@@ -76,8 +77,17 @@ function App() {
               </div>
               <span className="font-bold text-gray-900 text-lg">Budget App</span>
             </div>
-            <div className="w-10"></div> {/* Spacer for centering */}
+            <div className="flex items-center">
+              <SyncStatus className="mr-2" />
+            </div>
           </header>
+        )}
+        
+        {/* Desktop sync status */}
+        {!isMobile && (
+          <div className="absolute top-4 right-4 z-10">
+            <SyncStatus />
+          </div>
         )}
         
         {/* Main content */}

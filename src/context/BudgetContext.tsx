@@ -1,9 +1,15 @@
-import React, { createContext, useContext, useReducer, useEffect } from 'react'
+import React, { createContext, useContext, useReducer, useEffect, useRef } from 'react'
 import { Transaction, Category, Budget, BudgetStats, User } from '../types'
 import { generateCurrentMonthData } from '../utils/resetData'
 import { useAuth } from './AuthContext'
+import { dataSyncService, LocalData } from '../services/dataSyncService'
 import { db } from '../config/firebase'
-import { doc, setDoc, onSnapshot } from 'firebase/firestore'
+import { 
+  doc, 
+  setDoc, 
+  serverTimestamp,
+  deleteDoc
+} from 'firebase/firestore'
 
 interface BudgetState {
   transactions: Transaction[]
@@ -23,18 +29,25 @@ type BudgetAction =
   | { type: 'DELETE_BUDGET'; payload: string }
   | { type: 'UPDATE_USER'; payload: User }
   | { type: 'LOAD_DATA'; payload: BudgetState }
+  | { type: 'SYNC_TRANSACTIONS'; payload: Transaction[] }
+  | { type: 'SYNC_CATEGORIES'; payload: Category[] }
+  | { type: 'SYNC_BUDGETS'; payload: Budget[] }
 
 interface BudgetContextType {
   state: BudgetState
   dispatch: React.Dispatch<BudgetAction>
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => void
-  deleteTransaction: (id: string) => void
-  addCategory: (category: Omit<Category, 'id'>) => void
-  deleteCategory: (id: string) => void
-  addBudget: (budget: Omit<Budget, 'id'>) => void
-  updateBudget: (budget: Budget) => void
-  deleteBudget: (id: string) => void
-  updateUser: (user: User) => void
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'createdAt'>) => Promise<void>
+  deleteTransaction: (id: string) => Promise<void>
+  addCategory: (category: Omit<Category, 'id'>) => Promise<void>
+  deleteCategory: (id: string) => Promise<void>
+  addBudget: (budget: Omit<Budget, 'id'>) => Promise<void>
+  updateBudget: (budget: Budget) => Promise<void>
+  deleteBudget: (id: string) => Promise<void>
+  updateUser: (user: User) => Promise<void>
+  syncDataToFirestore: () => Promise<void>
+  loadDataFromFirestore: () => Promise<void>
+  forceSync: () => Promise<void>
+  getOnlineStatus: () => boolean
 }
 
 const BudgetContext = createContext<BudgetContextType | undefined>(undefined)
@@ -94,6 +107,24 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
     case 'LOAD_DATA':
       return action.payload
     
+    case 'SYNC_TRANSACTIONS':
+      return {
+        ...state,
+        transactions: action.payload,
+      }
+    
+    case 'SYNC_CATEGORIES':
+      return {
+        ...state,
+        categories: action.payload,
+      }
+    
+    case 'SYNC_BUDGETS':
+      return {
+        ...state,
+        budgets: action.payload,
+      }
+    
     default:
       return state
   }
@@ -102,6 +133,20 @@ function budgetReducer(state: BudgetState, action: BudgetAction): BudgetState {
 export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(budgetReducer, initialState)
   const { currentUser } = useAuth()
+  const isInitialized = useRef(false)
+  const syncInProgress = useRef(false)
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const lastSyncRef = useRef<{
+    transactions: string
+    categories: string
+    budgets: string
+    user: string
+  }>({
+    transactions: '',
+    categories: '',
+    budgets: '',
+    user: ''
+  })
 
   // Load data from localStorage on mount (for non-authenticated users)
   useEffect(() => {
@@ -118,79 +163,26 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser])
 
-  // Load user data from Firestore when authenticated
+  // Initialize data sync when user authenticates
   useEffect(() => {
-    if (currentUser) {
-      const userDocRef = doc(db, 'users', currentUser.uid)
+    if (currentUser && !isInitialized.current) {
+      isInitialized.current = true
       
-      // Set up real-time listener for user data
-      const unsubscribe = onSnapshot(userDocRef, (doc) => {
-        if (doc.exists()) {
-          const userData = doc.data()
-          if (userData) {
-            // Load user profile data from Firestore
-            const updatedUser: User = {
-              id: currentUser.uid,
-              name: userData.name || currentUser.displayName || '',
-              email: userData.email || currentUser.email || '',
-              avatar: userData.avatar || currentUser.photoURL || undefined,
-              currency: userData.currency || 'USD',
-              timezone: userData.timezone || 'America/New_York',
-              monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
-              monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
-              savingsGoal: userData.savingsGoal || 0,
-              notifications: userData.notifications || {
-                email: true,
-                push: true,
-                budgetAlerts: true,
-                weeklyReports: false,
-              },
-              preferences: userData.preferences || {
-                theme: 'light',
-                language: 'en',
-                dateFormat: 'MM/dd/yyyy',
-                currencyFormat: '$#,##0.00',
-              },
-              createdAt: userData.createdAt || new Date().toISOString(),
-              updatedAt: userData.updatedAt || new Date().toISOString(),
-            }
-            dispatch({ type: 'UPDATE_USER', payload: updatedUser })
-          }
-        } else {
-          // Create new user document if it doesn't exist
-          const newUser: User = {
-            id: currentUser.uid,
-            name: currentUser.displayName || '',
-            email: currentUser.email || '',
-            avatar: currentUser.photoURL || undefined,
-            currency: 'USD',
-            timezone: 'America/New_York',
-            monthlyIncomeGoal: 0,
-            monthlyExpenseGoal: 0,
-            savingsGoal: 0,
-            notifications: {
-              email: true,
-              push: true,
-              budgetAlerts: true,
-              weeklyReports: false,
-            },
-            preferences: {
-              theme: 'light',
-              language: 'en',
-              dateFormat: 'MM/dd/yyyy',
-              currencyFormat: '$#,##0.00',
-            },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-          setDoc(userDocRef, newUser)
-          dispatch({ type: 'UPDATE_USER', payload: newUser })
-        }
-      }, (error) => {
-        console.error('Error loading user data from Firestore:', error)
+      // Initialize sync with the data sync service
+      dataSyncService.initializeSync(currentUser.uid, (data: LocalData) => {
+        // Update state when data changes from sync
+        dispatch({ type: 'SYNC_TRANSACTIONS', payload: data.transactions })
+        dispatch({ type: 'SYNC_CATEGORIES', payload: data.categories })
+        dispatch({ type: 'SYNC_BUDGETS', payload: data.budgets })
+        dispatch({ type: 'UPDATE_USER', payload: data.user })
       })
+    }
 
-      return () => unsubscribe()
+    // Cleanup sync when user changes or component unmounts
+    return () => {
+      if (currentUser) {
+        dataSyncService.cleanupSync(currentUser.uid)
+      }
     }
   }, [currentUser])
 
@@ -200,6 +192,56 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('budget-app-data', JSON.stringify(state))
     }
   }, [state, currentUser])
+
+  // Auto-sync effect for authenticated users
+  useEffect(() => {
+    if (!currentUser) return
+
+    // Create current state snapshots
+    const currentTransactions = JSON.stringify(state.transactions)
+    const currentCategories = JSON.stringify(state.categories)
+    const currentBudgets = JSON.stringify(state.budgets)
+    const currentUserData = JSON.stringify(state.user)
+
+    // Check if any data has changed
+    const hasChanged = 
+      currentTransactions !== lastSyncRef.current.transactions ||
+      currentCategories !== lastSyncRef.current.categories ||
+      currentBudgets !== lastSyncRef.current.budgets ||
+      currentUserData !== lastSyncRef.current.user
+
+    if (hasChanged) {
+      // Clear existing timeout
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current)
+      }
+
+      // Set new timeout for auto-sync (debounce for 2 seconds)
+      syncTimeoutRef.current = setTimeout(() => {
+        syncDataToFirestore()
+        
+        // Update last sync references
+        lastSyncRef.current = {
+          transactions: currentTransactions,
+          categories: currentCategories,
+          budgets: currentBudgets,
+          user: currentUserData
+        }
+      }, 2000)
+    }
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current)
+      }
+    }
+  }, [
+    state.transactions,
+    state.categories,
+    state.budgets,
+    state.user,
+    currentUser
+  ])
 
   // Calculate stats whenever transactions change
   useEffect(() => {
@@ -246,45 +288,195 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.transactions, state.budgets])
 
-  const addTransaction = (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
+  const syncDataToFirestore = async () => {
+    if (!currentUser || syncInProgress.current) return
+    
+    syncInProgress.current = true
+    try {
+      const localData: LocalData = {
+        transactions: state.transactions,
+        categories: state.categories,
+        budgets: state.budgets,
+        user: state.user
+      }
+      
+      const result = await dataSyncService.syncToFirestore(currentUser.uid, localData)
+      
+      if (!result.success) {
+        console.error('Sync failed:', result.message)
+      }
+    } catch (error) {
+      console.error('Error syncing data to Firestore:', error)
+    } finally {
+      syncInProgress.current = false
+    }
+  }
+
+  const loadDataFromFirestore = async () => {
+    if (!currentUser) return
+    
+    try {
+      const result = await dataSyncService.syncFromFirestore(currentUser.uid)
+      
+      if (result.success && result.data) {
+        dispatch({ type: 'SYNC_TRANSACTIONS', payload: result.data.transactions })
+        dispatch({ type: 'SYNC_CATEGORIES', payload: result.data.categories })
+        dispatch({ type: 'SYNC_BUDGETS', payload: result.data.budgets })
+        dispatch({ type: 'UPDATE_USER', payload: result.data.user })
+      }
+    } catch (error) {
+      console.error('Error loading data from Firestore:', error)
+    }
+  }
+
+  const forceSync = async () => {
+    if (!currentUser) return
+    
+    try {
+      const localData: LocalData = {
+        transactions: state.transactions,
+        categories: state.categories,
+        budgets: state.budgets,
+        user: state.user
+      }
+      
+      const result = await dataSyncService.forceSync(currentUser.uid, localData)
+      
+      if (result.success && result.data) {
+        dispatch({ type: 'SYNC_TRANSACTIONS', payload: result.data.transactions })
+        dispatch({ type: 'SYNC_CATEGORIES', payload: result.data.categories })
+        dispatch({ type: 'SYNC_BUDGETS', payload: result.data.budgets })
+        dispatch({ type: 'UPDATE_USER', payload: result.data.user })
+      }
+    } catch (error) {
+      console.error('Error forcing sync:', error)
+    }
+  }
+
+  const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>) => {
     const newTransaction: Transaction = {
       ...transaction,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
     }
+    
     dispatch({ type: 'ADD_TRANSACTION', payload: newTransaction })
+    
+    // Sync to Firestore if authenticated
+    if (currentUser) {
+      try {
+        const transactionRef = doc(db, 'users', currentUser.uid, 'transactions', newTransaction.id)
+        await setDoc(transactionRef, {
+          ...newTransaction,
+          updatedAt: serverTimestamp()
+        })
+      } catch (error) {
+        console.error('Error saving transaction to Firestore:', error)
+      }
+    }
   }
 
-  const deleteTransaction = (id: string) => {
+  const deleteTransaction = async (id: string) => {
     dispatch({ type: 'DELETE_TRANSACTION', payload: id })
+    
+    // Delete from Firestore if authenticated
+    if (currentUser) {
+      try {
+        const transactionRef = doc(db, 'users', currentUser.uid, 'transactions', id)
+        await deleteDoc(transactionRef)
+      } catch (error) {
+        console.error('Error deleting transaction from Firestore:', error)
+      }
+    }
   }
 
-  const addCategory = (category: Omit<Category, 'id'>) => {
+  const addCategory = async (category: Omit<Category, 'id'>) => {
     const newCategory: Category = {
       ...category,
       id: crypto.randomUUID(),
     }
+    
     dispatch({ type: 'ADD_CATEGORY', payload: newCategory })
+    
+    // Sync to Firestore if authenticated
+    if (currentUser) {
+      try {
+        const categoryRef = doc(db, 'users', currentUser.uid, 'categories', newCategory.id)
+        await setDoc(categoryRef, {
+          ...newCategory,
+          updatedAt: serverTimestamp()
+        })
+      } catch (error) {
+        console.error('Error saving category to Firestore:', error)
+      }
+    }
   }
 
-  const deleteCategory = (id: string) => {
+  const deleteCategory = async (id: string) => {
     dispatch({ type: 'DELETE_CATEGORY', payload: id })
+    
+    // Delete from Firestore if authenticated
+    if (currentUser) {
+      try {
+        const categoryRef = doc(db, 'users', currentUser.uid, 'categories', id)
+        await deleteDoc(categoryRef)
+      } catch (error) {
+        console.error('Error deleting category from Firestore:', error)
+      }
+    }
   }
 
-  const addBudget = (budget: Omit<Budget, 'id'>) => {
+  const addBudget = async (budget: Omit<Budget, 'id'>) => {
     const newBudget: Budget = {
       ...budget,
       id: crypto.randomUUID(),
     }
+    
     dispatch({ type: 'ADD_BUDGET', payload: newBudget })
+    
+    // Sync to Firestore if authenticated
+    if (currentUser) {
+      try {
+        const budgetRef = doc(db, 'users', currentUser.uid, 'budgets', newBudget.id)
+        await setDoc(budgetRef, {
+          ...newBudget,
+          updatedAt: serverTimestamp()
+        })
+      } catch (error) {
+        console.error('Error saving budget to Firestore:', error)
+      }
+    }
   }
 
-  const updateBudget = (budget: Budget) => {
+  const updateBudget = async (budget: Budget) => {
     dispatch({ type: 'UPDATE_BUDGET', payload: budget })
+    
+    // Sync to Firestore if authenticated
+    if (currentUser) {
+      try {
+        const budgetRef = doc(db, 'users', currentUser.uid, 'budgets', budget.id)
+        await setDoc(budgetRef, {
+          ...budget,
+          updatedAt: serverTimestamp()
+        }, { merge: true })
+      } catch (error) {
+        console.error('Error updating budget in Firestore:', error)
+      }
+    }
   }
 
-  const deleteBudget = (id: string) => {
+  const deleteBudget = async (id: string) => {
     dispatch({ type: 'DELETE_BUDGET', payload: id })
+    
+    // Delete from Firestore if authenticated
+    if (currentUser) {
+      try {
+        const budgetRef = doc(db, 'users', currentUser.uid, 'budgets', id)
+        await deleteDoc(budgetRef)
+      } catch (error) {
+        console.error('Error deleting budget from Firestore:', error)
+      }
+    }
   }
 
   const updateUser = async (user: User) => {
@@ -304,6 +496,10 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const getOnlineStatus = () => {
+    return dataSyncService.getOnlineStatus()
+  }
+
   const value: BudgetContextType = {
     state,
     dispatch,
@@ -315,6 +511,10 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     updateBudget,
     deleteBudget,
     updateUser,
+    syncDataToFirestore,
+    loadDataFromFirestore,
+    forceSync,
+    getOnlineStatus,
   }
 
   return (

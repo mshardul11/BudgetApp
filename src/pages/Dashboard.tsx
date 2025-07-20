@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
-import { useState } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import MonthPicker from '../components/MonthPicker'
 
 export default function Dashboard() {
@@ -29,71 +29,85 @@ export default function Dashboard() {
     date: new Date().toISOString().split('T')[0]
   })
   
-
-
-  // Get selected month transactions
-  const selectedMonth = format(selectedDate, 'yyyy-MM')
-  const monthlyTransactions = transactions.filter(t => t.date.startsWith(selectedMonth))
-
-  // Prepare chart data
-  const expenseByCategory = categories
-    .filter(cat => cat.type === 'expense')
-    .map(cat => {
-      const total = monthlyTransactions
-        .filter(t => t.type === 'expense' && t.category === cat.name)
-        .reduce((sum, t) => sum + t.amount, 0)
-      return {
-        name: cat.name,
-        value: total,
-        color: cat.color,
-        icon: cat.icon
-      }
-    })
-    .filter(item => item.value > 0)
-    .sort((a, b) => b.value - a.value)
-
-  const recentTransactions = transactions
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5)
-
-  // Calculate stats for selected month
-  const monthlyStats = {
-    totalIncome: monthlyTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0),
-    totalExpenses: monthlyTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0),
-    balance: 0,
-    savingsRate: 0
-  }
+  // Memoized calculations to prevent unnecessary re-computations
+  const selectedMonth = useMemo(() => format(selectedDate, 'yyyy-MM'), [selectedDate])
   
-  monthlyStats.balance = monthlyStats.totalIncome - monthlyStats.totalExpenses
-  monthlyStats.savingsRate = monthlyStats.totalIncome > 0 
-    ? (monthlyStats.balance / monthlyStats.totalIncome) * 100 
-    : 0
+  const monthlyTransactions = useMemo(() => 
+    transactions.filter(t => t.date.startsWith(selectedMonth)),
+    [transactions, selectedMonth]
+  )
 
-  // Utility functions for date and color management
-  const getMonthRange = () => {
+  const expenseCategories = useMemo(() => 
+    categories.filter(cat => cat.type === 'expense'),
+    [categories]
+  )
+
+  // Prepare chart data with memoization
+  const expenseByCategory = useMemo(() => {
+    return expenseCategories
+      .map(cat => {
+        const total = monthlyTransactions
+          .filter(t => t.type === 'expense' && t.category === cat.name)
+          .reduce((sum, t) => sum + t.amount, 0)
+        return {
+          name: cat.name,
+          value: total,
+          color: cat.color,
+          icon: cat.icon
+        }
+      })
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [expenseCategories, monthlyTransactions])
+
+  const recentTransactions = useMemo(() => {
+    return transactions
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5)
+  }, [transactions])
+
+  // Calculate stats for selected month with memoization
+  const monthlyStats = useMemo(() => {
+    const totalIncome = monthlyTransactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0)
+    
+    const totalExpenses = monthlyTransactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0)
+    
+    const balance = totalIncome - totalExpenses
+    const savingsRate = totalIncome > 0 ? (balance / totalIncome) * 100 : 0
+    
+    return {
+      totalIncome,
+      totalExpenses,
+      balance,
+      savingsRate
+    }
+  }, [monthlyTransactions])
+
+  // Utility functions with useCallback to prevent re-creation
+  const getMonthRange = useCallback(() => {
     const start = startOfMonth(selectedDate)
     const end = endOfMonth(selectedDate)
     return { start, end }
-  }
+  }, [selectedDate])
 
-  const getMonthProgress = () => {
+  const getMonthProgress = useCallback(() => {
     const { end } = getMonthRange()
     const now = new Date()
     const totalDays = end.getDate()
     const elapsedDays = Math.min(now.getDate(), totalDays)
     return (elapsedDays / totalDays) * 100
-  }
+  }, [getMonthRange])
 
-  const getChartColors = (count: number) => {
+  const getChartColors = useCallback((count: number) => {
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD']
     return COLORS.slice(0, count)
-  }
+  }, [])
 
-  const getMonthStatus = () => {
+  const getMonthStatus = useCallback(() => {
     const now = new Date()
     const isCurrentMonth = selectedDate.getMonth() === now.getMonth() && selectedDate.getFullYear() === now.getFullYear()
     const isPastMonth = selectedDate < startOfMonth(now)
@@ -105,9 +119,9 @@ export default function Dashboard() {
       isFuture: isFutureMonth,
       progress: isCurrentMonth ? getMonthProgress() : isPastMonth ? 100 : 0
     }
-  }
+  }, [selectedDate, getMonthProgress])
 
-  const getMonthComparison = () => {
+  const getMonthComparison = useCallback(() => {
     const previousMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1, 1)
     const previousMonthStr = format(previousMonth, 'yyyy-MM')
     const previousMonthTransactions = transactions.filter(t => t.date.startsWith(previousMonthStr))
@@ -129,9 +143,9 @@ export default function Dashboard() {
       isIncomeUp: incomeChange > 0,
       isExpenseUp: expenseChange > 0
     }
-  }
+  }, [selectedDate, transactions, monthlyStats.totalIncome, monthlyStats.totalExpenses])
 
-  const getMonthSummary = () => {
+  const getMonthSummary = useCallback(() => {
     const { end } = getMonthRange()
     const totalDays = end.getDate()
     const transactionCount = monthlyTransactions.length
@@ -143,9 +157,9 @@ export default function Dashboard() {
       avgDailySpending,
       daysRemaining: getMonthStatus().isCurrent ? totalDays - new Date().getDate() : 0
     }
-  }
+  }, [getMonthRange, monthlyTransactions.length, monthlyStats.totalExpenses, getMonthStatus().isCurrent])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.amount || !formData.description || !formData.category) return
 
@@ -165,9 +179,12 @@ export default function Dashboard() {
       date: new Date().toISOString().split('T')[0]
     })
     setShowForm(false)
-  }
+  }, [formData, addTransaction])
 
-  const filteredCategories = categories.filter(cat => cat.type === formData.type)
+  const filteredCategories = useMemo(() => 
+    categories.filter(cat => cat.type === formData.type),
+    [categories, formData.type]
+  )
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-fade-in">

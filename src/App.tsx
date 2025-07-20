@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { preloadCharts } from './components/LazyChart'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Income from './pages/Income'
@@ -49,7 +50,15 @@ function App() {
     checkMobile()
     window.addEventListener('resize', checkMobile)
     
-    return () => window.removeEventListener('resize', checkMobile)
+    // Preload chart library when app loads for better UX
+    const preloadTimer = setTimeout(() => {
+      preloadCharts().catch(console.error)
+    }, 2000) // Delay to not interfere with initial load
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+      clearTimeout(preloadTimer)
+    }
   }, [])
 
   const LayoutWrapper = ({ children }: { children: React.ReactNode }) => (

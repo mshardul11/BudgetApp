@@ -155,6 +155,12 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       if (savedData) {
         try {
           const parsedData = JSON.parse(savedData)
+          // Ensure categories are properly structured
+          if (!parsedData.categories || !Array.isArray(parsedData.categories) || parsedData.categories.length === 0) {
+            console.log('Fixing missing or invalid categories in localStorage data')
+            const defaultData = generateCurrentMonthData()
+            parsedData.categories = defaultData.categories
+          }
           dispatch({ type: 'LOAD_DATA', payload: parsedData })
         } catch (error) {
           console.error('Error loading saved data:', error)

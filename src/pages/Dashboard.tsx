@@ -28,6 +28,8 @@ export default function Dashboard() {
     category: '',
     date: new Date().toISOString().split('T')[0]
   })
+  
+
 
   // Get selected month transactions
   const selectedMonth = format(selectedDate, 'yyyy-MM')

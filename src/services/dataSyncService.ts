@@ -162,8 +162,8 @@ class DataSyncService {
       collection(db, 'users', userId, 'categories'),
       orderBy('name')
     )
-    const categoriesUnsubscribe = onSnapshot(categoriesQuery, (snapshot) => {
-      const categories: Category[] = []
+    const categoriesUnsubscribe = onSnapshot(categoriesQuery, async (snapshot) => {
+      let categories: Category[] = []
       snapshot.forEach((doc) => {
         const data = doc.data()
         categories.push({
@@ -174,6 +174,14 @@ class DataSyncService {
           icon: data.icon,
         })
       })
+
+      // Ensure categories are properly structured
+      if (!categories || categories.length === 0) {
+        console.log('No categories found in real-time sync, using default categories')
+        const { generateCurrentMonthData } = await import('../utils/resetData')
+        const defaultData = generateCurrentMonthData()
+        categories = defaultData.categories
+      }
 
       // Update local data
       const localData = this.getLocalData()
@@ -437,7 +445,7 @@ class DataSyncService {
         orderBy('name')
       )
       const categoriesSnapshot = await getDocs(categoriesQuery)
-      const categories: Category[] = []
+      let categories: Category[] = []
       
       categoriesSnapshot.forEach((doc) => {
         const data = doc.data()
@@ -503,6 +511,14 @@ class DataSyncService {
         }
       } else {
         throw new Error('User document not found')
+      }
+
+      // Ensure categories are properly structured
+      if (!categories || categories.length === 0) {
+        console.log('No categories found in Firestore, using default categories')
+        const { generateCurrentMonthData } = await import('../utils/resetData')
+        const defaultData = generateCurrentMonthData()
+        categories = defaultData.categories
       }
 
       const data: LocalData = {

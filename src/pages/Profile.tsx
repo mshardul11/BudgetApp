@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useBudget } from '../context/BudgetContext'
 import { useAuth } from '../context/AuthContext'
 import { User } from '../types'
@@ -38,6 +38,11 @@ export default function Profile() {
   const [formData, setFormData] = useState<User>(user)
   const [activeTab, setActiveTab] = useState<'profile' | 'goals' | 'notifications' | 'preferences' | 'data'>('profile')
   const [showTestDataWarning, setShowTestDataWarning] = useState(hasTestData())
+
+  // Sync formData with user data from context
+  useEffect(() => {
+    setFormData(user)
+  }, [user])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

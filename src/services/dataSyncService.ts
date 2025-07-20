@@ -1,6 +1,5 @@
 import { 
   doc, 
-  setDoc, 
   getDoc, 
   getDocs, 
   collection, 
@@ -8,7 +7,6 @@ import {
   orderBy, 
   serverTimestamp,
   writeBatch,
-  deleteDoc,
   Timestamp,
   onSnapshot,
   Unsubscribe
@@ -104,7 +102,7 @@ class DataSyncService {
    */
   private handleOnlineStatusChange(): void {
     // Trigger sync for all active listeners
-    this.syncListeners.forEach((listener, userId) => {
+    this.syncListeners.forEach((_, userId) => {
       this.triggerSync(userId)
     })
   }

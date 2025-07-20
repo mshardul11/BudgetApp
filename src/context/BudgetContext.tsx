@@ -2,6 +2,8 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react'
 import { Transaction, Category, Budget, BudgetStats, User } from '../types'
 import { generateCurrentMonthData } from '../utils/resetData'
 import { useAuth } from './AuthContext'
+import { db } from '../config/firebase'
+import { doc, setDoc, onSnapshot } from 'firebase/firestore'
 
 interface BudgetState {
   transactions: Transaction[]
@@ -101,38 +103,103 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(budgetReducer, initialState)
   const { currentUser } = useAuth()
 
-  // Load data from localStorage on mount
+  // Load data from localStorage on mount (for non-authenticated users)
   useEffect(() => {
-    const savedData = localStorage.getItem('budget-app-data')
-    if (savedData) {
-      try {
-        const parsedData = JSON.parse(savedData)
-        dispatch({ type: 'LOAD_DATA', payload: parsedData })
-      } catch (error) {
-        console.error('Error loading saved data:', error)
+    if (!currentUser) {
+      const savedData = localStorage.getItem('budget-app-data')
+      if (savedData) {
+        try {
+          const parsedData = JSON.parse(savedData)
+          dispatch({ type: 'LOAD_DATA', payload: parsedData })
+        } catch (error) {
+          console.error('Error loading saved data:', error)
+        }
       }
     }
-  }, [])
+  }, [currentUser])
 
-  // Sync user data with authenticated user
+  // Load user data from Firestore when authenticated
   useEffect(() => {
-    if (currentUser && (!state.user.name || state.user.name !== currentUser.displayName)) {
-      const updatedUser: User = {
-        ...state.user,
-        id: currentUser.uid,
-        name: currentUser.displayName || '',
-        email: currentUser.email || '',
-        avatar: currentUser.photoURL || undefined,
-        updatedAt: new Date().toISOString()
-      }
-      dispatch({ type: 'UPDATE_USER', payload: updatedUser })
+    if (currentUser) {
+      const userDocRef = doc(db, 'users', currentUser.uid)
+      
+      // Set up real-time listener for user data
+      const unsubscribe = onSnapshot(userDocRef, (doc) => {
+        if (doc.exists()) {
+          const userData = doc.data()
+          if (userData) {
+            // Load user profile data from Firestore
+            const updatedUser: User = {
+              id: currentUser.uid,
+              name: userData.name || currentUser.displayName || '',
+              email: userData.email || currentUser.email || '',
+              avatar: userData.avatar || currentUser.photoURL || undefined,
+              currency: userData.currency || 'USD',
+              timezone: userData.timezone || 'America/New_York',
+              monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
+              monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
+              savingsGoal: userData.savingsGoal || 0,
+              notifications: userData.notifications || {
+                email: true,
+                push: true,
+                budgetAlerts: true,
+                weeklyReports: false,
+              },
+              preferences: userData.preferences || {
+                theme: 'light',
+                language: 'en',
+                dateFormat: 'MM/dd/yyyy',
+                currencyFormat: '$#,##0.00',
+              },
+              createdAt: userData.createdAt || new Date().toISOString(),
+              updatedAt: userData.updatedAt || new Date().toISOString(),
+            }
+            dispatch({ type: 'UPDATE_USER', payload: updatedUser })
+          }
+        } else {
+          // Create new user document if it doesn't exist
+          const newUser: User = {
+            id: currentUser.uid,
+            name: currentUser.displayName || '',
+            email: currentUser.email || '',
+            avatar: currentUser.photoURL || undefined,
+            currency: 'USD',
+            timezone: 'America/New_York',
+            monthlyIncomeGoal: 0,
+            monthlyExpenseGoal: 0,
+            savingsGoal: 0,
+            notifications: {
+              email: true,
+              push: true,
+              budgetAlerts: true,
+              weeklyReports: false,
+            },
+            preferences: {
+              theme: 'light',
+              language: 'en',
+              dateFormat: 'MM/dd/yyyy',
+              currencyFormat: '$#,##0.00',
+            },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          setDoc(userDocRef, newUser)
+          dispatch({ type: 'UPDATE_USER', payload: newUser })
+        }
+      }, (error) => {
+        console.error('Error loading user data from Firestore:', error)
+      })
+
+      return () => unsubscribe()
     }
-  }, [currentUser, state.user.name])
+  }, [currentUser])
 
-  // Save data to localStorage whenever state changes
+  // Save data to localStorage for non-authenticated users
   useEffect(() => {
-    localStorage.setItem('budget-app-data', JSON.stringify(state))
-  }, [state])
+    if (!currentUser) {
+      localStorage.setItem('budget-app-data', JSON.stringify(state))
+    }
+  }, [state, currentUser])
 
   // Calculate stats whenever transactions change
   useEffect(() => {
@@ -220,8 +287,21 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'DELETE_BUDGET', payload: id })
   }
 
-  const updateUser = (user: User) => {
+  const updateUser = async (user: User) => {
     dispatch({ type: 'UPDATE_USER', payload: user })
+    
+    // Save to Firestore if user is authenticated
+    if (currentUser) {
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid)
+        await setDoc(userDocRef, {
+          ...user,
+          updatedAt: new Date().toISOString()
+        }, { merge: true })
+      } catch (error) {
+        console.error('Error saving user data to Firestore:', error)
+      }
+    }
   }
 
   const value: BudgetContextType = {

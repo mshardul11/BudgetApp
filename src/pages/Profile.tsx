@@ -38,20 +38,28 @@ export default function Profile() {
   const [formData, setFormData] = useState<User>(user)
   const [activeTab, setActiveTab] = useState<'profile' | 'goals' | 'notifications' | 'preferences' | 'data'>('profile')
   const [showTestDataWarning, setShowTestDataWarning] = useState(hasTestData())
+  const [isSaving, setIsSaving] = useState(false)
 
   // Sync formData with user data from context
   useEffect(() => {
     setFormData(user)
   }, [user])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const updatedUser = {
-      ...formData,
-      updatedAt: new Date().toISOString()
+    setIsSaving(true)
+    try {
+      const updatedUser = {
+        ...formData,
+        updatedAt: new Date().toISOString()
+      }
+      await updateUser(updatedUser)
+      setIsEditing(false)
+    } catch (error) {
+      console.error('Error saving profile:', error)
+    } finally {
+      setIsSaving(false)
     }
-    updateUser(updatedUser)
-    setIsEditing(false)
   }
 
   const handleCancel = () => {
@@ -247,14 +255,19 @@ export default function Profile() {
 
               {isEditing && (
                 <div className="flex space-x-4 pt-4">
-                  <button type="submit" className="btn-primary flex items-center space-x-2">
+                  <button 
+                    type="submit" 
+                    className="btn-primary flex items-center space-x-2"
+                    disabled={isSaving}
+                  >
                     <Save className="w-4 h-4" />
-                    <span>Save Changes</span>
+                    <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
                   </button>
                   <button 
                     type="button" 
                     onClick={handleCancel}
                     className="btn-secondary"
+                    disabled={isSaving}
                   >
                     Cancel
                   </button>
@@ -335,13 +348,18 @@ export default function Profile() {
               </div>
               {isEditing && (
                 <div className="flex space-x-4 pt-4">
-                  <button onClick={handleSubmit} className="btn-primary flex items-center space-x-2">
+                  <button 
+                    onClick={handleSubmit} 
+                    className="btn-primary flex items-center space-x-2"
+                    disabled={isSaving}
+                  >
                     <Save className="w-4 h-4" />
-                    <span>Save Goals</span>
+                    <span>{isSaving ? 'Saving...' : 'Save Goals'}</span>
                   </button>
                   <button 
                     onClick={handleCancel}
                     className="btn-secondary"
+                    disabled={isSaving}
                   >
                     Cancel
                   </button>
@@ -391,13 +409,18 @@ export default function Profile() {
 
               {isEditing && (
                 <div className="flex space-x-4 pt-4">
-                  <button onClick={handleSubmit} className="btn-primary flex items-center space-x-2">
+                  <button 
+                    onClick={handleSubmit} 
+                    className="btn-primary flex items-center space-x-2"
+                    disabled={isSaving}
+                  >
                     <Save className="w-4 h-4" />
-                    <span>Save Notifications</span>
+                    <span>{isSaving ? 'Saving...' : 'Save Notifications'}</span>
                   </button>
                   <button 
                     onClick={handleCancel}
                     className="btn-secondary"
+                    disabled={isSaving}
                   >
                     Cancel
                   </button>

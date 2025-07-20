@@ -10,7 +10,7 @@ import {
   signInWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth'
-import { auth, googleProvider, facebookProvider } from '../config/firebase'
+import { auth, getGoogleProvider, getFacebookProvider } from '../config/firebase'
 
 interface AuthContextType {
   currentUser: User | null
@@ -52,7 +52,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider)
+      const provider = getGoogleProvider()
+      const result = await signInWithPopup(auth, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
       if (credential) {
         // User signed in successfully
@@ -67,7 +68,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithFacebook = async () => {
     try {
-      const result = await signInWithPopup(auth, facebookProvider)
+      const provider = getFacebookProvider()
+      const result = await signInWithPopup(auth, provider)
       const credential = FacebookAuthProvider.credentialFromResult(result)
       if (credential) {
         // User signed in successfully

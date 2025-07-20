@@ -1,7 +1,9 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
-import { getAnalytics } from 'firebase/analytics'
+
+// Lazy load analytics only when needed
+let analytics: any = null
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -23,20 +25,37 @@ export const auth = getAuth(app)
 // Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app)
 
-// Initialize Firebase Analytics
-export const analytics = getAnalytics(app)
+// Lazy load analytics
+export const getAnalytics = async () => {
+  if (!analytics && typeof window !== 'undefined') {
+    const { getAnalytics: getAnalyticsImpl } = await import('firebase/analytics')
+    analytics = getAnalyticsImpl(app)
+  }
+  return analytics
+}
 
-// Auth providers
-export const googleProvider = new GoogleAuthProvider()
-export const facebookProvider = new FacebookAuthProvider()
+// Auth providers with lazy initialization
+let googleProvider: GoogleAuthProvider | null = null
+let facebookProvider: FacebookAuthProvider | null = null
 
-// Configure providers
-googleProvider.setCustomParameters({
-  prompt: 'select_account'
-})
+export const getGoogleProvider = () => {
+  if (!googleProvider) {
+    googleProvider = new GoogleAuthProvider()
+    googleProvider.setCustomParameters({
+      prompt: 'select_account'
+    })
+  }
+  return googleProvider
+}
 
-facebookProvider.setCustomParameters({
-  display: 'popup'
-})
+export const getFacebookProvider = () => {
+  if (!facebookProvider) {
+    facebookProvider = new FacebookAuthProvider()
+    facebookProvider.setCustomParameters({
+      display: 'popup'
+    })
+  }
+  return facebookProvider
+}
 
 export default app 

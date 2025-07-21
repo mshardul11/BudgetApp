@@ -10,7 +10,7 @@ import {
   signInWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth'
-import { auth, getGoogleProvider, getFacebookProvider } from '../config/firebase'
+import { auth, getGoogleProvider } from '../config/firebase'
 
 interface AuthContextType {
   currentUser: User | null

@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { NavigationContainer } from '@react-navigation/native'
 import { createStackNavigator } from '@react-navigation/stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
@@ -23,8 +23,8 @@ const Tab = createBottomTabNavigator<NavigationParams>()
 const TabNavigator = () => {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
+      screenOptions={({ route }: { route: { name: keyof NavigationParams } }) => ({
+        tabBarIcon: ({ focused, color, size }: { focused: boolean; color: string; size: number }) => {
           let iconName: keyof typeof Ionicons.glyphMap
 
           switch (route.name) {

@@ -224,7 +224,7 @@ export const BudgetProvider: React.FC<BudgetProviderProps> = ({ children }) => {
 
     try {
       // Set up real-time sync
-      const syncListener = dataSyncService.setupRealtimeSync(
+      dataSyncService.setupRealtimeSync(
         currentUser.uid,
         (data: LocalData) => {
           dispatch({ type: 'LOAD_DATA', payload: data })

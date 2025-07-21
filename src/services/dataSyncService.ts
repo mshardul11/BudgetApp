@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { Transaction, Category, Budget, User } from '../types'
-import NetInfo from '@react-native-community/netinfo'
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo'
 
 export interface SyncResult {
   success: boolean
@@ -47,7 +47,7 @@ class DataSyncService {
 
   constructor() {
     // Listen for network status changes in React Native
-    NetInfo.addEventListener(state => {
+    NetInfo.addEventListener((state: NetInfoState) => {
       const wasOnline = this.isOnline
       this.isOnline = state.isConnected ?? false
       
@@ -141,17 +141,17 @@ class DataSyncService {
   /**
    * Sync data with Firestore
    */
-  public async syncData(userId?: string): Promise<SyncResult> {
-    if (!this.isOnline) {
-      return {
-        success: false,
-        message: 'Device is offline. Data will sync when connection is restored.'
-      }
-    }
+     public async syncData(userId?: string): Promise<SyncResult> {
+     if (!this.isOnline) {
+       return {
+         success: false,
+         message: 'Device is offline. Data will sync when connection is restored.'
+       }
+     }
 
-    try {
-      const localData = await this.getLocalData()
-      const lastSync = await this.getLastSyncTimestamp()
+     try {
+       const localData = await this.getLocalData()
+       // const lastSync = await this.getLastSyncTimestamp() // TODO: Use for incremental sync
 
       if (!userId && !localData?.user?.id) {
         return {

@@ -174,8 +174,8 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     if (currentUser && !isInitialized.current) {
       isInitialized.current = true
       
-      // Initialize sync with the data sync service
-      dataSyncService.initializeSync(currentUser.uid, (data: LocalData) => {
+      // Set up real-time sync
+      dataSyncService.setupRealtimeSync(currentUser.uid, (data: LocalData) => {
         // Update state when data changes from sync
         dispatch({ type: 'SYNC_TRANSACTIONS', payload: data.transactions })
         dispatch({ type: 'SYNC_CATEGORIES', payload: data.categories })
@@ -187,7 +187,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     // Cleanup sync when user changes or component unmounts
     return () => {
       if (currentUser) {
-        dataSyncService.cleanupSync(currentUser.uid)
+        dataSyncService.removeRealtimeSync(currentUser.uid)
       }
     }
   }, [currentUser])
@@ -311,7 +311,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         user: state.user
       }
       
-      const result = await dataSyncService.syncToFirestore(currentUser.uid, localData)
+      const result = await dataSyncService.syncData(currentUser.uid)
       
       if (!result.success) {
         console.error('Sync failed:', result.message)
@@ -327,7 +327,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return
     
     try {
-      const result = await dataSyncService.syncFromFirestore(currentUser.uid)
+      const result = await dataSyncService.syncData(currentUser.uid)
       
       if (result.success && result.data) {
         dispatch({ type: 'SYNC_TRANSACTIONS', payload: result.data.transactions })
@@ -351,7 +351,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
         user: state.user
       }
       
-      const result = await dataSyncService.forceSync(currentUser.uid, localData)
+      const result = await dataSyncService.forceSync(currentUser.uid)
       
       if (result.success && result.data) {
         dispatch({ type: 'SYNC_TRANSACTIONS', payload: result.data.transactions })

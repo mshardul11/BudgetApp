@@ -113,6 +113,10 @@
     @apply stat-card bg-gradient-to-br from-yellow-50/90 to-orange-50/70 border-yellow-200/50;
   }
 
+  .stat-card-purple {
+    @apply stat-card bg-gradient-to-br from-purple-50/90 to-violet-50/70 border-purple-200/50;
+  }
+
   .glass-effect {
     @apply bg-white/20 backdrop-blur-md border border-white/30;
   }

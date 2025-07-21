@@ -23,13 +23,17 @@ export default function Reports() {
       const expenses = monthTransactions
         .filter(t => t.type === 'expense')
         .reduce((sum, t) => sum + t.amount, 0)
+      const investments = monthTransactions
+        .filter(t => t.type === 'investment')
+        .reduce((sum, t) => sum + t.amount, 0)
       
       months.push({
         month: monthName,
         income,
         expenses,
-        balance: income - expenses,
-        savingsRate: income > 0 ? ((income - expenses) / income) * 100 : 0
+        investments,
+        balance: income - expenses - investments,
+        savingsRate: income > 0 ? ((income - expenses - investments) / income) * 100 : 0
       })
     }
     return months
@@ -83,9 +87,34 @@ export default function Reports() {
       .sort((a, b) => b.value - a.value)
   }
 
+  // Get investment breakdown by category
+  const getInvestmentBreakdown = () => {
+    const currentMonth = format(new Date(), 'yyyy-MM')
+    const monthlyInvestments = transactions.filter(t => 
+      t.type === 'investment' && t.date.startsWith(currentMonth)
+    )
+
+    return categories
+      .filter(cat => cat.type === 'investment')
+      .map(cat => {
+        const total = monthlyInvestments
+          .filter(t => t.category === cat.name)
+          .reduce((sum, t) => sum + t.amount, 0)
+        return {
+          name: cat.name,
+          value: total,
+          color: cat.color,
+          icon: cat.icon
+        }
+      })
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }
+
   const monthlyData = getMonthlyData()
   const expenseBreakdown = getExpenseBreakdown()
   const incomeBreakdown = getIncomeBreakdown()
+  const investmentBreakdown = getInvestmentBreakdown()
 
 
 
@@ -127,6 +156,7 @@ export default function Reports() {
               />
               <Bar dataKey="income" fill="#10b981" radius={[4, 4, 0, 0]} name="Income" />
               <Bar dataKey="expenses" fill="#ef4444" radius={[4, 4, 0, 0]} name="Expenses" />
+              <Bar dataKey="investments" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Investments" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -172,7 +202,7 @@ export default function Reports() {
       </div>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
         {/* Expense Breakdown */}
         <div className="card animate-slide-up" style={{ animationDelay: '300ms' }}>
           <div className="flex items-center justify-between mb-6">
@@ -276,10 +306,62 @@ export default function Reports() {
             </div>
           )}
         </div>
+
+        {/* Investment Breakdown */}
+        <div className="card animate-slide-up" style={{ animationDelay: '500ms' }}>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-gray-900">Investment Breakdown</h3>
+            <div className="flex items-center space-x-2">
+              <PieChartIcon className="w-5 h-5 text-purple-500" />
+              <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+            </div>
+          </div>
+          {investmentBreakdown.length > 0 ? (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={investmentBreakdown}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={120}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {investmentBreakdown.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value) => formatCurrency(value as number, user)}
+                    contentStyle={{
+                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                      border: 'none',
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-80 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <TrendingUp className="w-8 h-8 text-gray-400" />
+                </div>
+                <p className="text-lg font-medium">No investment data available</p>
+                <p className="text-sm">Start tracking your investments to see insights</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Summary Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <div className="stat-card-success animate-slide-up" style={{ animationDelay: '500ms' }}>
           <div className="text-center">
             <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-3">
@@ -300,6 +382,18 @@ export default function Reports() {
             <p className="text-sm font-medium text-gray-600 mb-1">Average Monthly Expenses</p>
             <p className="text-2xl font-bold gradient-text-danger">
               {formatCurrency(monthlyData.reduce((sum, m) => sum + m.expenses, 0) / monthlyData.length, user)}
+            </p>
+          </div>
+        </div>
+
+        <div className="stat-card-purple animate-slide-up" style={{ animationDelay: '650ms' }}>
+          <div className="text-center">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-100 to-violet-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+              <TrendingUp className="w-6 h-6 text-purple-600" />
+            </div>
+            <p className="text-sm font-medium text-gray-600 mb-1">Average Monthly Investments</p>
+            <p className="text-2xl font-bold text-purple-600">
+              {formatCurrency(monthlyData.reduce((sum, m) => sum + (m.investments || 0), 0) / monthlyData.length, user)}
             </p>
           </div>
         </div>

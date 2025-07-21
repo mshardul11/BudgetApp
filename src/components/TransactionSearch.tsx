@@ -10,7 +10,7 @@ interface TransactionSearchProps {
 
 export default function TransactionSearch({ transactions, categories, onFilterChange }: TransactionSearchProps) {
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense'>('all')
+  const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense' | 'investment'>('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [dateRange, setDateRange] = useState<'all' | 'week' | 'month' | 'year'>('all')
 
@@ -106,7 +106,7 @@ export default function TransactionSearch({ transactions, categories, onFilterCh
         <select
           value={selectedType}
           onChange={(e) => {
-            setSelectedType(e.target.value as 'all' | 'income' | 'expense')
+            setSelectedType(e.target.value as 'all' | 'income' | 'expense' | 'investment')
             handleSearch()
           }}
           className="input"
@@ -114,6 +114,7 @@ export default function TransactionSearch({ transactions, categories, onFilterCh
           <option value="all">All Types</option>
           <option value="income">Income</option>
           <option value="expense">Expense</option>
+          <option value="investment">Investment</option>
         </select>
 
         {/* Category Filter */}

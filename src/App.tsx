@@ -5,6 +5,7 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Income from './pages/Income'
 import Expenses from './pages/Expenses'
+import Investments from './pages/Investments'
 import Budget from './pages/Budget'
 import Reports from './pages/Reports'
 import Profile from './pages/Profile'
@@ -139,6 +140,14 @@ function App() {
               <ProtectedRoute>
                 <LayoutWrapper>
                   <Expenses />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            } />
+            
+            <Route path="/investments" element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <Investments />
                 </LayoutWrapper>
               </ProtectedRoute>
             } />

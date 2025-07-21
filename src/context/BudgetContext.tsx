@@ -304,13 +304,6 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     
     syncInProgress.current = true
     try {
-      const localData: LocalData = {
-        transactions: state.transactions,
-        categories: state.categories,
-        budgets: state.budgets,
-        user: state.user
-      }
-      
       const result = await dataSyncService.syncData(currentUser.uid)
       
       if (!result.success) {
@@ -344,13 +337,6 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     if (!currentUser) return
     
     try {
-      const localData: LocalData = {
-        transactions: state.transactions,
-        categories: state.categories,
-        budgets: state.budgets,
-        user: state.user
-      }
-      
       const result = await dataSyncService.forceSync(currentUser.uid)
       
       if (result.success && result.data) {

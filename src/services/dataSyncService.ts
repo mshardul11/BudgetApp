@@ -59,16 +59,17 @@ class DataSyncService {
 
   /**
    * Get the last sync timestamp from AsyncStorage
+   * TODO: Use for incremental sync optimization
    */
-  private async getLastSyncTimestamp(): Promise<number> {
-    try {
-      const timestamp = await AsyncStorage.getItem(this.syncKey)
-      return timestamp ? parseInt(timestamp, 10) : 0
-    } catch (error) {
-      console.error('Error getting sync timestamp:', error)
-      return 0
-    }
-  }
+  // private async getLastSyncTimestamp(): Promise<number> {
+  //   try {
+  //     const timestamp = await AsyncStorage.getItem(this.syncKey)
+  //     return timestamp ? parseInt(timestamp, 10) : 0
+  //   } catch (error) {
+  //     console.error('Error getting sync timestamp:', error)
+  //     return 0
+  //   }
+  // }
 
   /**
    * Update the last sync timestamp

@@ -8,7 +8,8 @@ import {
   Plus,
   Calendar,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  PieChart as PieChartIcon
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -76,12 +77,17 @@ export default function Dashboard() {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0)
     
-    const balance = totalIncome - totalExpenses
+    const totalInvestments = monthlyTransactions
+      .filter(t => t.type === 'investment')
+      .reduce((sum, t) => sum + t.amount, 0)
+    
+    const balance = totalIncome - totalExpenses - totalInvestments
     const savingsRate = totalIncome > 0 ? (balance / totalIncome) * 100 : 0
     
     return {
       totalIncome,
       totalExpenses,
+      totalInvestments,
       balance,
       savingsRate
     }
@@ -164,7 +170,7 @@ export default function Dashboard() {
     if (!formData.amount || !formData.description || !formData.category) return
 
     addTransaction({
-      type: formData.type as 'income' | 'expense',
+      type: formData.type as 'income' | 'expense' | 'investment',
       amount: parseFloat(formData.amount),
       description: formData.description,
       category: formData.category,
@@ -243,7 +249,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
         <div className="stat-card-success animate-slide-up" style={{ animationDelay: '100ms' }}>
           <div className="flex items-center justify-between">
             <div className="flex-1">
@@ -280,6 +286,24 @@ export default function Dashboard() {
             </div>
             <div className="p-3 bg-gradient-to-br from-red-100 to-pink-100 rounded-xl ml-3">
               <TrendingDown className="w-6 h-6 sm:w-8 sm:h-8 text-red-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card-purple animate-slide-up" style={{ animationDelay: '250ms' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-600 mb-1">Total Investments</p>
+              <p className="text-xl sm:text-2xl lg:text-3xl font-bold text-purple-600">
+                {formatCurrency(monthlyStats.totalInvestments, user)}
+              </p>
+              <div className="flex items-center mt-2 text-purple-600">
+                <Target className="w-4 h-4 mr-1" />
+                <span className="text-sm font-medium">Future goals</span>
+              </div>
+            </div>
+            <div className="p-3 bg-gradient-to-br from-purple-100 to-violet-100 rounded-xl ml-3">
+              <PieChartIcon className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
             </div>
           </div>
         </div>
@@ -465,6 +489,7 @@ export default function Dashboard() {
                 >
                   <option value="expense">Expense</option>
                   <option value="income">Income</option>
+                  <option value="investment">Investment</option>
                 </select>
               </div>
               <div>
@@ -495,7 +520,13 @@ export default function Dashboard() {
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="input"
-                  placeholder={formData.type === 'income' ? "e.g., Salary, Freelance work" : "e.g., Groceries, Gas, Shopping"}
+                  placeholder={
+                    formData.type === 'income' 
+                      ? "e.g., Salary, Freelance work" 
+                      : formData.type === 'investment'
+                      ? "e.g., Stock purchase, Bond investment"
+                      : "e.g., Groceries, Gas, Shopping"
+                  }
                   required
                 />
               </div>
@@ -534,10 +565,22 @@ export default function Dashboard() {
             <div className="flex space-x-4">
               <button 
                 type="submit" 
-                className={`flex-1 ${formData.type === 'income' ? 'btn-success' : 'btn-danger'} flex items-center justify-center space-x-2`}
+                className={`flex-1 ${
+                  formData.type === 'income' 
+                    ? 'btn-success' 
+                    : formData.type === 'investment'
+                    ? 'bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-3 rounded-lg transition-colors'
+                    : 'btn-danger'
+                } flex items-center justify-center space-x-2`}
               >
                 <Plus className="w-4 h-4" />
-                <span>Add {formData.type === 'income' ? 'Income' : 'Expense'}</span>
+                <span>Add {
+                  formData.type === 'income' 
+                    ? 'Income' 
+                    : formData.type === 'investment'
+                    ? 'Investment'
+                    : 'Expense'
+                }</span>
               </button>
               <button 
                 type="button" 
@@ -587,8 +630,14 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`font-bold text-lg ${transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount, user)}
+                                    <p className={`font-bold text-lg ${
+                  transaction.type === 'income' 
+                    ? 'text-green-600' 
+                    : transaction.type === 'investment'
+                    ? 'text-purple-600'
+                    : 'text-red-600'
+                }`}>
+                  {transaction.type === 'income' ? '+' : transaction.type === 'investment' ? '→' : '-'}{formatCurrency(transaction.amount, user)}
                     </p>
                     <p className="text-sm text-gray-500">{format(new Date(transaction.date), 'MMM dd')}</p>
                   </div>

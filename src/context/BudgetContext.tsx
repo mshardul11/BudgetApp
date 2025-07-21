@@ -264,7 +264,11 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0)
     
-    const balance = totalIncome - totalExpenses
+    const totalInvestments = monthlyTransactions
+      .filter(t => t.type === 'investment')
+      .reduce((sum, t) => sum + t.amount, 0)
+    
+    const balance = totalIncome - totalExpenses - totalInvestments
     const savingsRate = totalIncome > 0 ? (balance / totalIncome) * 100 : 0
     
     const monthlyBudget = state.budgets
@@ -279,6 +283,7 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
     const newStats = {
       totalIncome,
       totalExpenses,
+      totalInvestments,
       balance,
       savingsRate,
       monthlyBudget,

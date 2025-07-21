@@ -1,6 +1,6 @@
 export interface Transaction {
   id: string
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'investment'
   amount: number
   description: string
   category: string
@@ -11,7 +11,7 @@ export interface Transaction {
 export interface Category {
   id: string
   name: string
-  type: 'income' | 'expense'
+  type: 'income' | 'expense' | 'investment'
   color: string
   icon: string
 }
@@ -28,6 +28,7 @@ export interface Budget {
 export interface BudgetStats {
   totalIncome: number
   totalExpenses: number
+  totalInvestments: number
   balance: number
   savingsRate: number
   monthlyBudget: number

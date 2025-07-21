@@ -20,6 +20,16 @@ export const generateCurrentMonthData = () => {
     { id: '10', name: 'Shopping', type: 'expense', color: '#f97316', icon: '🛍️' },
     { id: '11', name: 'Healthcare', type: 'expense', color: '#10b981', icon: '🏥' },
     { id: '12', name: 'Education', type: 'expense', color: '#3b82f6', icon: '📚' },
+    
+    // Default investment categories
+    { id: '13', name: 'Stocks', type: 'investment', color: '#059669', icon: '📊' },
+    { id: '14', name: 'Bonds', type: 'investment', color: '#0891b2', icon: '🏛️' },
+    { id: '15', name: 'Real Estate', type: 'investment', color: '#7c3aed', icon: '🏘️' },
+    { id: '16', name: 'Mutual Funds', type: 'investment', color: '#dc2626', icon: '💹' },
+    { id: '17', name: 'Cryptocurrency', type: 'investment', color: '#ea580c', icon: '₿' },
+    { id: '18', name: 'Retirement Fund', type: 'investment', color: '#4f46e5', icon: '🏦' },
+    { id: '19', name: 'Emergency Fund', type: 'investment', color: '#16a34a', icon: '🚨' },
+    { id: '20', name: 'Education Fund', type: 'investment', color: '#0d9488', icon: '🎓' },
   ]
 
   // Empty initial state
@@ -54,6 +64,7 @@ export const generateCurrentMonthData = () => {
     stats: {
       totalIncome: 0,
       totalExpenses: 0,
+      totalInvestments: 0,
       balance: 0,
       savingsRate: 0,
       monthlyBudget: 0,

@@ -77,7 +77,11 @@ export const generateReport = (transactions: Transaction[], categories: Category
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0)
   
-  const balance = totalIncome - totalExpenses
+  const totalInvestments = monthlyTransactions
+    .filter(t => t.type === 'investment')
+    .reduce((sum, t) => sum + t.amount, 0)
+  
+  const balance = totalIncome - totalExpenses - totalInvestments
   const savingsRate = totalIncome > 0 ? (balance / totalIncome) * 100 : 0
 
   // Category breakdown
@@ -96,6 +100,7 @@ export const generateReport = (transactions: Transaction[], categories: Category
     period: currentMonth,
     totalIncome,
     totalExpenses,
+    totalInvestments,
     balance,
     savingsRate,
     expenseByCategory,

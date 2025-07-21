@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { 
   Home, 
   TrendingUp, 
-  TrendingDown, 
+  TrendingDown,
+  PieChart,
   Target, 
   BarChart3,
   X,
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: Home, description: 'Overview of your finances' },
   { name: 'Income', href: '/income', icon: TrendingUp, description: 'Track your income sources' },
   { name: 'Expenses', href: '/expenses', icon: TrendingDown, description: 'Monitor your spending' },
+  { name: 'Investments', href: '/investments', icon: PieChart, description: 'Build your future goals' },
   { name: 'Budget', href: '/budget', icon: Target, description: 'Set and track budgets' },
   { name: 'Reports', href: '/reports', icon: BarChart3, description: 'Analytics and insights' },
 ]

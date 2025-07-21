@@ -34,9 +34,15 @@ jobs:
       
       - name: Create Firebase service account key
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}' > $HOME/firebase-service-account.json
-          export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 != '' }}
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}' > $HOME/firebase-service-account.json
+            export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
+            echo "Firebase service account configured"
+          else
+            echo "Firebase service account not available"
+          fi
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}
       
       - name: Deploy to Firebase Hosting Preview
         run: |

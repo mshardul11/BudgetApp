@@ -1,80 +1,61 @@
-# 💰 Budget App - Personal Finance Manager
+# Budget App Mobile 📱
 
-A modern, feature-rich personal finance management application built with React, TypeScript, and Tailwind CSS. Track your income, expenses, set budgets, and gain insights into your financial patterns.
+A React Native/Expo mobile application that syncs with the Budget App web version. Track your income, expenses, budgets, and financial goals on the go with real-time synchronization across all devices.
 
-## ✨ Features
+## Features
 
-### 📊 **Dashboard**
-- **Real-time Overview**: View total income, expenses, balance, and savings rate
-- **Interactive Charts**: Pie charts for expense breakdown and bar charts for monthly overview
-- **Recent Transactions**: Quick view of latest transactions
-- **Add Transactions**: Quick transaction entry directly from dashboard
-- **Responsive Design**: Works perfectly on desktop and mobile
+### 🔄 **Real-time Sync**
+- Seamless synchronization with the web app using Firebase Firestore
+- Offline support with automatic sync when back online
+- Real-time updates across all devices
+- Conflict resolution for data integrity
 
-### 💸 **Income Management**
-- **Track Multiple Sources**: Salary, freelance, investments, and more
-- **Category Management**: Organize income by source
-- **Historical View**: Complete income history with filtering
-- **Quick Add**: Fast income entry with form validation
+### 📊 **Financial Management**
+- Track income, expenses, and investments
+- Set and monitor budgets
+- View detailed financial reports and analytics
+- Transaction categorization with custom categories
+- Monthly and yearly budget tracking
 
-### 💳 **Expense Tracking**
-- **Comprehensive Categories**: Food, transportation, housing, utilities, entertainment, etc.
-- **Smart Categorization**: Pre-defined categories with icons and colors
-- **Expense History**: Complete transaction history with search and filter
-- **Visual Indicators**: Color-coded categories for easy identification
+### 📱 **Mobile-Optimized UI**
+- Beautiful, intuitive mobile design
+- Pull-to-refresh functionality
+- Touch-friendly interface
+- Responsive design for all screen sizes
+- Smooth animations and transitions
 
-### 🎯 **Budget Management**
-- **Set Budget Limits**: Monthly and yearly budget categories
-- **Progress Tracking**: Visual progress bars showing budget usage
-- **Over-budget Alerts**: Warning indicators when approaching limits
-- **Category Budgets**: Individual budgets for different expense categories
+### 🔐 **Secure Authentication**
+- Firebase Authentication integration
+- Email/password login
+- Secure user data storage
+- Session persistence
 
-### 📈 **Reports & Analytics**
-- **6-Month Trends**: Income and expense trends over time
-- **Savings Rate Analysis**: Track your savings rate progression
-- **Category Breakdown**: Detailed pie charts for income and expenses
-- **Summary Statistics**: Average monthly income, expenses, and savings
+## Technology Stack
 
-### 👤 **User Profile & Settings**
-- **Personal Information**: Name, email, currency, timezone
-- **Financial Goals**: Set monthly income, expense, and savings goals
-- **Notification Preferences**: Email, push, budget alerts, weekly reports
-- **App Preferences**: Theme, language, date format, currency format
-- **Multi-Currency Support**: USD, EUR, GBP, INR, JPY, CAD
-- **Multi-Language**: English, Hindi, Spanish, French, German, Japanese
+- **Framework**: React Native with Expo
+- **Language**: TypeScript
+- **Backend**: Firebase (Firestore, Auth)
+- **Navigation**: React Navigation 6
+- **State Management**: Context API with useReducer
+- **Storage**: AsyncStorage for offline data
+- **Network**: NetInfo for connectivity detection
+- **Icons**: Expo Vector Icons
+- **UI Components**: React Native + Custom Components
 
-### 🔍 **Search & Filter**
-- **Transaction Search**: Search by description or category
-- **Type Filtering**: Filter by income or expense
-- **Category Filtering**: Filter by specific categories
-- **Date Range Filtering**: Week, month, year, or all time
-- **Real-time Results**: Instant filtering as you type
+## Prerequisites
 
-### 📤 **Data Management**
-- **Export Data**: Download transactions as CSV or full data as JSON
-- **Import Data**: Restore from previous backups
-- **Data Security**: Local storage with encryption
-- **Backup Recommendations**: Regular export reminders
-
-### 🎨 **Modern UI/UX**
-- **Beautiful Design**: Modern, clean interface with gradients and animations
-- **Responsive Layout**: Works on all screen sizes
-- **Dark/Light Theme**: Theme preferences (coming soon)
-- **Smooth Animations**: Engaging user experience
-- **Accessibility**: Keyboard navigation and screen reader support
-
-## 🚀 Getting Started
-
-### Prerequisites
 - Node.js (v14 or higher)
 - npm or yarn
+- Expo CLI (`npm install -g @expo/cli`)
+- Android Studio (for Android development)
+- Xcode (for iOS development, macOS only)
 
-### Installation
+## Installation
 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd budget-app
+   cd budget-app/android-app/BudgetApp
    ```
 
 2. **Install dependencies**
@@ -82,152 +63,218 @@ A modern, feature-rich personal finance management application built with React,
    npm install
    ```
 
-3. **Start the development server**
+3. **Configure Firebase**
+   - Ensure Firebase is properly configured (uses same config as web app)
+   - The Firebase configuration is located in `src/config/firebase.ts`
+
+4. **Start the development server**
    ```bash
-   npm run dev
+   npx expo start
    ```
 
-4. **Open your browser**
-   Navigate to `http://localhost:5173`
+5. **Run on device/emulator**
+   - For Android: Press `a` in the terminal or scan QR code with Expo Go
+   - For iOS: Press `i` in the terminal or scan QR code with Expo Go
 
-## 🛠️ Technology Stack
+## Project Structure
 
-- **Frontend**: React 18 with TypeScript
-- **Styling**: Tailwind CSS with custom animations
-- **Charts**: Recharts for data visualization
-- **Icons**: Lucide React icons
-- **Date Handling**: date-fns library
-- **State Management**: React Context API
-- **Build Tool**: Vite
-- **Package Manager**: npm
+```
+src/
+├── components/          # Reusable UI components
+├── contexts/           # React Context providers
+│   ├── AuthContext.tsx
+│   └── BudgetContext.tsx
+├── navigation/         # Navigation configuration
+│   └── AppNavigator.tsx
+├── screens/           # App screens
+│   ├── LoginScreen.tsx
+│   ├── DashboardScreen.tsx
+│   ├── TransactionsScreen.tsx
+│   ├── BudgetScreen.tsx
+│   ├── ReportsScreen.tsx
+│   └── ProfileScreen.tsx
+├── services/          # API and data services
+│   └── dataSyncService.ts
+├── types/            # TypeScript type definitions
+│   └── index.ts
+├── utils/            # Utility functions
+└── config/           # Configuration files
+    └── firebase.ts
+```
 
-## 📱 Features in Detail
+## Key Features
 
-### **Multi-Currency Support**
-- **USD ($)**: US Dollar
-- **EUR (€)**: Euro
-- **GBP (£)**: British Pound
-- **INR (₹)**: Indian Rupee
-- **JPY (¥)**: Japanese Yen
-- **CAD (C$)**: Canadian Dollar
+### Real-time Data Synchronization
+The app uses a sophisticated sync service that:
+- Monitors network connectivity
+- Queues operations when offline
+- Merges data conflicts intelligently
+- Provides real-time updates via Firestore listeners
 
-### **Date Format Options**
-- **MM/DD/YYYY (US)**: 12/25/2024
-- **DD/MM/YYYY (India/UK)**: 25/12/2024
-- **YYYY-MM-DD (ISO)**: 2024-12-25
+### Cross-Platform Compatibility
+- Identical data structure with web app
+- Shared Firebase backend
+- Consistent user experience across platforms
+- Same business logic and validation rules
 
-### **Language Support**
-- **English**: Default language
-- **Hindi (हिंदी)**: Indian language support
-- **Spanish (Español)**: Spanish language
-- **French (Français)**: French language
-- **German (Deutsch)**: German language
-- **Japanese (日本語)**: Japanese language
+### Offline Support
+- Local data caching with AsyncStorage
+- Queue operations when offline
+- Automatic sync when connection restored
+- Optimistic UI updates
 
-### **Notification Settings**
-- **Email Notifications**: Receive updates via email
-- **Push Notifications**: Browser push notifications
-- **Budget Alerts**: Get notified when approaching budget limits
-- **Weekly Reports**: Receive weekly financial summaries
+## Configuration
 
-## 📊 Sample Data
+### Firebase Setup
+The app uses the same Firebase project as the web version:
+- Project ID: `budgetapp-254a2`
+- Authentication: Email/Password
+- Database: Cloud Firestore
+- Real-time sync enabled
 
-The app comes with realistic sample data to help you get started:
-- **Sample Income**: Monthly salary and freelance income
-- **Sample Expenses**: Rent, groceries, transportation, utilities, entertainment
-- **Sample Budgets**: Food & dining, transportation, entertainment budgets
-- **Realistic Categories**: Pre-configured income and expense categories
+### Environment Variables
+No additional environment variables needed - uses same Firebase config as web app.
 
-## 🔧 Customization
+## Building for Production
 
-### **Adding New Categories**
-1. Go to Profile Settings
-2. Navigate to Categories section
-3. Add new income or expense categories
-4. Set custom colors and icons
+### Android APK
+```bash
+npx expo build:android
+```
 
-### **Setting Financial Goals**
-1. Go to Profile Settings
-2. Navigate to Financial Goals tab
-3. Set monthly income, expense, and savings goals
-4. Track progress across the app
+### iOS IPA (macOS only)
+```bash
+npx expo build:ios
+```
 
-### **Customizing Preferences**
-1. Go to Profile Settings
-2. Navigate to Preferences tab
-3. Choose your preferred theme, language, and formats
-4. Settings apply immediately across the app
+### Using EAS Build (Recommended)
+```bash
+npm install -g eas-cli
+eas build --platform android
+eas build --platform ios
+```
 
-## 📈 Data Export/Import
+## Sync Architecture
 
-### **Export Options**
-- **CSV Export**: Download transactions for spreadsheet analysis
-- **JSON Export**: Complete data backup including settings and budgets
-- **Automatic Naming**: Files include current date for easy organization
+The mobile app maintains perfect sync with the web app through:
 
-### **Import Options**
-- **JSON Import**: Restore complete data from backup
-- **Data Validation**: Automatic validation of imported data
-- **Safe Import**: No data loss during import process
+1. **Shared Data Models**: Identical TypeScript interfaces
+2. **Firebase Integration**: Same Firestore collections and documents
+3. **Real-time Listeners**: Live updates via Firestore snapshots
+4. **Conflict Resolution**: Timestamp-based merging
+5. **Offline Queue**: Local operations synced when online
 
-## 🔒 Privacy & Security
+## Data Flow
 
-- **Local Storage**: All data stored locally in your browser
-- **No External Servers**: Data never leaves your device
-- **Encryption**: Sensitive data encrypted in localStorage
-- **Regular Backups**: Export recommendations for data safety
+```
+Mobile App ←→ Firebase Firestore ←→ Web App
+     ↓              ↓                ↓
+AsyncStorage   Cloud Storage    localStorage
+```
 
-## 🎯 Use Cases
+## Development
 
-### **Personal Finance Management**
-- Track daily expenses and income
-- Set and monitor budget limits
-- Analyze spending patterns
-- Plan for financial goals
+### Running in Development
+```bash
+# Start Expo development server
+npx expo start
 
-### **Small Business**
-- Track business income and expenses
-- Monitor cash flow
-- Set budget categories for different departments
-- Generate financial reports
+# Run on Android emulator
+npx expo start --android
 
-### **Family Budgeting**
-- Multiple income sources tracking
-- Shared expense management
-- Budget planning for family goals
-- Financial transparency
+# Run on iOS simulator (macOS only)
+npx expo start --ios
+```
 
-## 🚀 Future Enhancements
+### Debugging
+- Use Expo DevTools for debugging
+- React Native Debugger for advanced debugging
+- Flipper integration available
+- Chrome DevTools for JavaScript debugging
 
-- **Dark Mode**: Complete dark theme support
-- **Mobile App**: Native mobile applications
-- **Cloud Sync**: Secure cloud storage option
-- **Advanced Analytics**: More detailed financial insights
-- **Bill Reminders**: Automated bill payment reminders
-- **Investment Tracking**: Portfolio management features
-- **Multi-Account**: Support for multiple bank accounts
-- **Receipt Scanning**: OCR for receipt processing
+## Testing
 
-## 🤝 Contributing
+### Unit Tests
+```bash
+npm run test
+```
+
+### E2E Tests
+```bash
+npm run test:e2e
+```
+
+## Deployment
+
+### Expo Application Services (EAS)
+1. Configure EAS:
+   ```bash
+   eas init
+   ```
+
+2. Build for stores:
+   ```bash
+   eas build --platform all
+   ```
+
+3. Submit to app stores:
+   ```bash
+   eas submit --platform android
+   eas submit --platform ios
+   ```
+
+### Manual Deployment
+- Android: Generate APK and upload to Google Play Console
+- iOS: Generate IPA and upload to App Store Connect
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Sync not working**
+   - Check network connection
+   - Verify Firebase configuration
+   - Check authentication status
+
+2. **App crashes on startup**
+   - Clear Expo cache: `npx expo r -c`
+   - Reinstall dependencies: `rm -rf node_modules && npm install`
+
+3. **Build failures**
+   - Update Expo SDK: `npx expo install --fix`
+   - Check compatibility: `npx expo doctor`
+
+### Performance Optimization
+- Image optimization with Expo Image
+- Bundle size reduction with Metro bundler
+- Memory management with proper cleanup
+- Efficient re-renders with React.memo
+
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make changes and test thoroughly
+4. Ensure sync compatibility with web app
+5. Submit a pull request
 
-## 📄 License
+## Security
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- All sensitive data encrypted in transit
+- Local data stored securely in AsyncStorage
+- Firebase security rules enforced
+- No sensitive credentials in code
 
-## 🙏 Acknowledgments
+## License
 
-- **React Team**: For the amazing framework
-- **Tailwind CSS**: For the utility-first CSS framework
-- **Recharts**: For beautiful chart components
-- **Lucide**: For the icon library
-- **Vite**: For the fast build tool
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
+
+## Support
+
+For support, please contact the development team or create an issue in the repository.
 
 ---
 
-**Made with ❤️ for better financial management** 
+**Built with ❤️ using React Native and Expo**
+
+**Always in sync with the web app 🔄** 

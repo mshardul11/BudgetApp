@@ -65,4 +65,18 @@ export interface User {
   }
   createdAt: string
   updatedAt: string
+}
+
+export interface NavigationParams {
+  Dashboard: undefined
+  Transactions: undefined
+  Income: undefined
+  Expenses: undefined
+  Investments: undefined
+  Budget: undefined
+  Reports: undefined
+  Profile: undefined
+  Login: undefined
+  Register: undefined
+  AddTransaction: { type?: 'income' | 'expense' | 'investment' }
 } 

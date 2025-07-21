@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { 
   doc, 
   getDoc, 
@@ -13,6 +14,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { Transaction, Category, Budget, User } from '../types'
+import NetInfo from '@react-native-community/netinfo'
 
 export interface SyncResult {
   success: boolean
@@ -41,48 +43,66 @@ class DataSyncService {
   private readonly syncKey = 'budget-app-sync-timestamp'
   private readonly dataKey = 'budget-app-data'
   private syncListeners: Map<string, SyncListener> = new Map()
-  private isOnline: boolean = navigator.onLine
+  private isOnline: boolean = true
 
   constructor() {
-    // Listen for online/offline status
-    window.addEventListener('online', () => {
-      this.isOnline = true
-      this.handleOnlineStatusChange()
-    })
-    
-    window.addEventListener('offline', () => {
-      this.isOnline = false
+    // Listen for network status changes in React Native
+    NetInfo.addEventListener(state => {
+      const wasOnline = this.isOnline
+      this.isOnline = state.isConnected ?? false
+      
+      if (!wasOnline && this.isOnline) {
+        this.handleOnlineStatusChange()
+      }
     })
   }
 
   /**
-   * Get the last sync timestamp from localStorage
+   * Get the last sync timestamp from AsyncStorage
    */
-  private getLastSyncTimestamp(): number {
-    const timestamp = localStorage.getItem(this.syncKey)
-    return timestamp ? parseInt(timestamp, 10) : 0
+  private async getLastSyncTimestamp(): Promise<number> {
+    try {
+      const timestamp = await AsyncStorage.getItem(this.syncKey)
+      return timestamp ? parseInt(timestamp, 10) : 0
+    } catch (error) {
+      console.error('Error getting sync timestamp:', error)
+      return 0
+    }
   }
 
   /**
    * Update the last sync timestamp
    */
-  private updateSyncTimestamp(): void {
-    localStorage.setItem(this.syncKey, Date.now().toString())
+  private async updateSyncTimestamp(): Promise<void> {
+    try {
+      await AsyncStorage.setItem(this.syncKey, Date.now().toString())
+    } catch (error) {
+      console.error('Error updating sync timestamp:', error)
+    }
   }
 
   /**
-   * Get local data from localStorage
+   * Get local data from AsyncStorage
    */
-  private getLocalData(): LocalData | null {
-    const data = localStorage.getItem(this.dataKey)
-    return data ? JSON.parse(data) : null
+  private async getLocalData(): Promise<LocalData | null> {
+    try {
+      const data = await AsyncStorage.getItem(this.dataKey)
+      return data ? JSON.parse(data) : null
+    } catch (error) {
+      console.error('Error getting local data:', error)
+      return null
+    }
   }
 
   /**
-   * Save data to localStorage
+   * Save data to AsyncStorage
    */
-  private saveLocalData(data: LocalData): void {
-    localStorage.setItem(this.dataKey, JSON.stringify(data))
+  private async saveLocalData(data: LocalData): Promise<void> {
+    try {
+      await AsyncStorage.setItem(this.dataKey, JSON.stringify(data))
+    } catch (error) {
+      console.error('Error saving local data:', error)
+    }
   }
 
   /**
@@ -98,314 +118,82 @@ class DataSyncService {
   }
 
   /**
-   * Handle online status change - trigger sync when coming back online
+   * Handle network connection change
    */
-  private handleOnlineStatusChange(): void {
-    // Trigger sync for all active listeners
-    this.syncListeners.forEach((_, userId) => {
-      this.triggerSync(userId)
-    })
-  }
-
-  /**
-   * Trigger a sync for a specific user
-   */
-  private async triggerSync(userId: string): Promise<void> {
-    const localData = this.getLocalData()
-    if (localData) {
-      await this.mergeData(userId, localData)
+  private async handleOnlineStatusChange(): Promise<void> {
+    if (this.isOnline) {
+      // Auto-sync when coming back online
+      try {
+        await this.syncData()
+      } catch (error) {
+        console.error('Auto-sync failed:', error)
+      }
     }
   }
 
   /**
-   * Set up real-time sync listeners for a user
+   * Check if device is online
    */
-  setupRealtimeSync(userId: string, onDataChange: (data: LocalData) => void): Unsubscribe {
-    // Remove existing listener if any
-    this.removeRealtimeSync(userId)
-
-    const listeners: Unsubscribe[] = []
-    let lastSync = Date.now()
-
-    // Listen to transactions
-    const transactionsQuery = query(
-      collection(db, 'users', userId, 'transactions'),
-      orderBy('createdAt', 'desc')
-    )
-    const transactionsUnsubscribe = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactions: Transaction[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        transactions.push({
-          id: doc.id,
-          type: data.type,
-          amount: data.amount,
-          description: data.description,
-          category: data.category,
-          date: data.date,
-          createdAt: data.createdAt,
-        })
-      })
-
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, transactions }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to categories
-    const categoriesQuery = query(
-      collection(db, 'users', userId, 'categories'),
-      orderBy('name')
-    )
-    const categoriesUnsubscribe = onSnapshot(categoriesQuery, async (snapshot) => {
-      let categories: Category[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        categories.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          color: data.color,
-          icon: data.icon,
-        })
-      })
-
-      // Ensure categories are properly structured
-      if (!categories || categories.length === 0) {
-        console.log('No categories found in real-time sync, using default categories')
-        const { generateCurrentMonthData } = await import('../utils/resetData')
-        const defaultData = generateCurrentMonthData()
-        categories = defaultData.categories
-      }
-
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, categories }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to budgets
-    const budgetsQuery = query(
-      collection(db, 'users', userId, 'budgets'),
-      orderBy('startDate')
-    )
-    const budgetsUnsubscribe = onSnapshot(budgetsQuery, (snapshot) => {
-      const budgets: Budget[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        budgets.push({
-          id: doc.id,
-          category: data.category,
-          amount: data.amount,
-          spent: data.spent,
-          period: data.period,
-          startDate: data.startDate,
-        })
-      })
-
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, budgets }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to user data
-    const userUnsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
-      if (doc.exists()) {
-        const userData = doc.data()
-        const user: User = {
-          id: userId,
-          name: userData.name || '',
-          email: userData.email || '',
-          avatar: userData.avatar || undefined,
-          currency: userData.currency || 'USD',
-          timezone: userData.timezone || 'America/New_York',
-          monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
-          monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
-          savingsGoal: userData.savingsGoal || 0,
-          notifications: userData.notifications || {
-            email: true,
-            push: true,
-            budgetAlerts: true,
-            weeklyReports: false,
-          },
-          preferences: userData.preferences || {
-            theme: 'light',
-            language: 'en',
-            dateFormat: 'MM/dd/yyyy',
-            currencyFormat: '$#,##0.00',
-          },
-          createdAt: userData.createdAt || new Date().toISOString(),
-          updatedAt: userData.updatedAt || new Date().toISOString(),
-        }
-
-        // Update local data
-        const localData = this.getLocalData()
-        if (localData) {
-          const updatedData = { ...localData, user }
-          this.saveLocalData(updatedData)
-          onDataChange(updatedData)
-          lastSync = Date.now()
-        }
-      }
-    })
-
-    listeners.push(transactionsUnsubscribe, categoriesUnsubscribe, budgetsUnsubscribe, userUnsubscribe)
-
-    // Store the listener
-    this.syncListeners.set(userId, {
-      unsubscribe: () => listeners.forEach(unsub => unsub()),
-      lastSync
-    })
-
-    // Return unsubscribe function
-    return () => this.removeRealtimeSync(userId)
+  public getOnlineStatus(): boolean {
+    return this.isOnline
   }
 
   /**
-   * Remove real-time sync listeners for a user
+   * Sync data with Firestore
    */
-  removeRealtimeSync(userId: string): void {
-    const listener = this.syncListeners.get(userId)
-    if (listener) {
-      listener.unsubscribe()
-      this.syncListeners.delete(userId)
+  public async syncData(userId?: string): Promise<SyncResult> {
+    if (!this.isOnline) {
+      return {
+        success: false,
+        message: 'Device is offline. Data will sync when connection is restored.'
+      }
     }
-  }
 
-  /**
-   * Sync local data to Firestore with conflict resolution
-   */
-  async syncToFirestore(userId: string, localData: LocalData): Promise<SyncResult> {
     try {
-      const batch = writeBatch(db)
-      const conflicts: any = {}
+      const localData = await this.getLocalData()
+      const lastSync = await this.getLastSyncTimestamp()
 
-      // Sync transactions
-      const transactionsRef = collection(db, 'users', userId, 'transactions')
-      const existingTransactions = await getDocs(transactionsRef)
-      const existingTransactionMap = new Map()
-      
-      existingTransactions.forEach(doc => {
-        const data = doc.data()
-        existingTransactionMap.set(doc.id, data)
-      })
-
-      for (const transaction of localData.transactions) {
-        const existing = existingTransactionMap.get(transaction.id)
-        
-        if (!existing) {
-          // New transaction - add to Firestore
-          const transactionRef = doc(transactionsRef, transaction.id)
-          batch.set(transactionRef, {
-            ...transaction,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(transaction.createdAt, existing.updatedAt || existing.createdAt)) {
-          // Local transaction is newer - update Firestore
-          const transactionRef = doc(transactionsRef, transaction.id)
-          batch.set(transactionRef, {
-            ...transaction,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, transaction.createdAt)) {
-          // Firestore transaction is newer - mark as conflict
-          if (!conflicts.transactions) conflicts.transactions = []
-          conflicts.transactions.push(transaction)
+      if (!userId && !localData?.user?.id) {
+        return {
+          success: false,
+          message: 'No user ID provided and no local user data found'
         }
       }
 
-      // Sync categories
-      const categoriesRef = collection(db, 'users', userId, 'categories')
-      const existingCategories = await getDocs(categoriesRef)
-      const existingCategoryMap = new Map()
-      
-      existingCategories.forEach(doc => {
-        const data = doc.data()
-        existingCategoryMap.set(doc.id, data)
-      })
+      const userIdToUse = userId || localData!.user.id
 
-      for (const category of localData.categories) {
-        const existing = existingCategoryMap.get(category.id)
-        
-        if (!existing) {
-          // New category - add to Firestore
-          const categoryRef = doc(categoriesRef, category.id)
-          batch.set(categoryRef, {
-            ...category,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(category.id, existing.updatedAt || existing.createdAt)) {
-          // Local category is newer - update Firestore
-          const categoryRef = doc(categoriesRef, category.id)
-          batch.set(categoryRef, {
-            ...category,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, category.id)) {
-          // Firestore category is newer - mark as conflict
-          if (!conflicts.categories) conflicts.categories = []
-          conflicts.categories.push(category)
+      // Fetch data from Firestore
+      const firestoreData = await this.fetchFirestoreData(userIdToUse)
+
+      if (!localData) {
+        // First time sync - save Firestore data locally
+        await this.saveLocalData(firestoreData)
+        await this.updateSyncTimestamp()
+        return {
+          success: true,
+          message: 'Initial sync completed',
+          data: firestoreData
         }
       }
 
-      // Sync budgets
-      const budgetsRef = collection(db, 'users', userId, 'budgets')
-      const existingBudgets = await getDocs(budgetsRef)
-      const existingBudgetMap = new Map()
+      // Merge local and Firestore data
+      const mergedData = await this.mergeData(localData, firestoreData)
       
-      existingBudgets.forEach(doc => {
-        const data = doc.data()
-        existingBudgetMap.set(doc.id, data)
-      })
-
-      for (const budget of localData.budgets) {
-        const existing = existingBudgetMap.get(budget.id)
-        
-        if (!existing) {
-          // New budget - add to Firestore
-          const budgetRef = doc(budgetsRef, budget.id)
-          batch.set(budgetRef, {
-            ...budget,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(budget.id, existing.updatedAt || existing.createdAt)) {
-          // Local budget is newer - update Firestore
-          const budgetRef = doc(budgetsRef, budget.id)
-          batch.set(budgetRef, {
-            ...budget,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, budget.id)) {
-          // Firestore budget is newer - mark as conflict
-          if (!conflicts.budgets) conflicts.budgets = []
-          conflicts.budgets.push(budget)
-        }
-      }
-
-      await batch.commit()
-      this.updateSyncTimestamp()
+      // Save merged data locally
+      await this.saveLocalData(mergedData)
+      
+      // Upload any local changes to Firestore
+      await this.uploadToFirestore(userIdToUse, mergedData)
+      
+      await this.updateSyncTimestamp()
 
       return {
         success: true,
-        message: 'Data synced successfully',
-        conflicts: Object.keys(conflicts).length > 0 ? conflicts : undefined
+        message: 'Data synchronized successfully',
+        data: mergedData
       }
     } catch (error) {
-      console.error('Error syncing to Firestore:', error)
+      console.error('Sync error:', error)
       return {
         success: false,
         message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -414,227 +202,226 @@ class DataSyncService {
   }
 
   /**
-   * Sync Firestore data to local storage
+   * Fetch data from Firestore
    */
-  async syncFromFirestore(userId: string): Promise<{ success: boolean; data?: LocalData; message: string }> {
-    try {
-      // Load transactions
-      const transactionsQuery = query(
-        collection(db, 'users', userId, 'transactions'),
-        orderBy('createdAt', 'desc')
-      )
-      const transactionsSnapshot = await getDocs(transactionsQuery)
-      const transactions: Transaction[] = []
-      
-      transactionsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        transactions.push({
-          id: doc.id,
-          type: data.type,
-          amount: data.amount,
-          description: data.description,
-          category: data.category,
-          date: data.date,
-          createdAt: data.createdAt,
-        })
-      })
+  private async fetchFirestoreData(userId: string): Promise<LocalData> {
+    const [transactions, categories, budgets, userData] = await Promise.all([
+      this.fetchCollection('transactions', userId),
+      this.fetchCollection('categories', userId),
+      this.fetchCollection('budgets', userId),
+      this.fetchUser(userId)
+    ])
 
-      // Load categories
-      const categoriesQuery = query(
-        collection(db, 'users', userId, 'categories'),
-        orderBy('name')
-      )
-      const categoriesSnapshot = await getDocs(categoriesQuery)
-      let categories: Category[] = []
-      
-      categoriesSnapshot.forEach((doc) => {
-        const data = doc.data()
-        categories.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          color: data.color,
-          icon: data.icon,
-        })
-      })
-
-      // Load budgets
-      const budgetsQuery = query(
-        collection(db, 'users', userId, 'budgets'),
-        orderBy('startDate')
-      )
-      const budgetsSnapshot = await getDocs(budgetsQuery)
-      const budgets: Budget[] = []
-      
-      budgetsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        budgets.push({
-          id: doc.id,
-          category: data.category,
-          amount: data.amount,
-          spent: data.spent,
-          period: data.period,
-          startDate: data.startDate,
-        })
-      })
-
-      // Load user data
-      const userDoc = await getDoc(doc(db, 'users', userId))
-      let user: User
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data()
-        user = {
-          id: userId,
-          name: userData.name || '',
-          email: userData.email || '',
-          avatar: userData.avatar || undefined,
-          currency: userData.currency || 'USD',
-          timezone: userData.timezone || 'America/New_York',
-          monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
-          monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
-          savingsGoal: userData.savingsGoal || 0,
-          notifications: userData.notifications || {
-            email: true,
-            push: true,
-            budgetAlerts: true,
-            weeklyReports: false,
-          },
-          preferences: userData.preferences || {
-            theme: 'light',
-            language: 'en',
-            dateFormat: 'MM/dd/yyyy',
-            currencyFormat: '$#,##0.00',
-          },
-          createdAt: userData.createdAt || new Date().toISOString(),
-          updatedAt: userData.updatedAt || new Date().toISOString(),
-        }
-      } else {
-        throw new Error('User document not found')
-      }
-
-      // Ensure categories are properly structured
-      if (!categories || categories.length === 0) {
-        console.log('No categories found in Firestore, using default categories')
-        const { generateCurrentMonthData } = await import('../utils/resetData')
-        const defaultData = generateCurrentMonthData()
-        categories = defaultData.categories
-      }
-
-      const data: LocalData = {
-        transactions,
-        categories,
-        budgets,
-        user
-      }
-
-      // Save to localStorage
-      this.saveLocalData(data)
-      this.updateSyncTimestamp()
-
-      return {
-        success: true,
-        data,
-        message: 'Data loaded from Firestore successfully'
-      }
-    } catch (error) {
-      console.error('Error syncing from Firestore:', error)
-      return {
-        success: false,
-        message: `Load failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
+    return {
+      transactions: transactions as Transaction[],
+      categories: categories as Category[],
+      budgets: budgets as Budget[],
+      user: userData as User
     }
   }
 
   /**
-   * Merge local and remote data with conflict resolution
+   * Fetch a collection from Firestore
    */
-  async mergeData(userId: string, localData: LocalData): Promise<SyncResult> {
-    try {
-      // First, sync local data to Firestore
-      const syncResult = await this.syncToFirestore(userId, localData)
-      
-      if (!syncResult.success) {
-        return syncResult
-      }
-
-      // Then, load the latest data from Firestore
-      const loadResult = await this.syncFromFirestore(userId)
-      
-      if (!loadResult.success) {
-        return {
-          success: false,
-          message: `Merge failed: ${loadResult.message}`
-        }
-      }
-
-      return {
-        success: true,
-        message: 'Data merged successfully',
-        conflicts: syncResult.conflicts,
-        data: loadResult.data
-      }
-    } catch (error) {
-      console.error('Error merging data:', error)
-      return {
-        success: false,
-        message: `Merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
-    }
-  }
-
-  /**
-   * Check if sync is needed based on last sync timestamp
-   */
-  isSyncNeeded(): boolean {
-    const lastSync = this.getLastSyncTimestamp()
-    const now = Date.now()
-    const syncInterval = 5 * 60 * 1000 // 5 minutes
+  private async fetchCollection(collectionName: string, userId: string): Promise<any[]> {
+    const q = query(
+      collection(db, 'users', userId, collectionName),
+      orderBy('createdAt', 'desc')
+    )
     
-    return (now - lastSync) > syncInterval
+    const snapshot = await getDocs(q)
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
   }
 
   /**
-   * Force a complete sync regardless of timestamp
+   * Fetch user data from Firestore
    */
-  async forceSync(userId: string, localData: LocalData): Promise<SyncResult> {
-    return this.mergeData(userId, localData)
+  private async fetchUser(userId: string): Promise<User | null> {
+    const userDoc = await getDoc(doc(db, 'users', userId))
+    return userDoc.exists() ? { id: userDoc.id, ...userDoc.data() } as User : null
   }
 
   /**
-   * Clear sync timestamp (useful for testing or reset)
+   * Merge local and Firestore data
    */
-  clearSyncTimestamp(): void {
-    localStorage.removeItem(this.syncKey)
+  private async mergeData(localData: LocalData, firestoreData: LocalData): Promise<LocalData> {
+    return {
+      transactions: this.mergeArrays(localData.transactions, firestoreData.transactions),
+      categories: this.mergeArrays(localData.categories, firestoreData.categories),
+      budgets: this.mergeArrays(localData.budgets, firestoreData.budgets),
+      user: this.mergeUser(localData.user, firestoreData.user)
+    }
   }
 
   /**
-   * Get current online status
+   * Merge arrays of items based on ID and timestamp
    */
-  getOnlineStatus(): boolean {
-    return this.isOnline
+  private mergeArrays(localItems: any[], firestoreItems: any[]): any[] {
+    const merged = new Map<string, any>()
+
+    // Add Firestore items first
+    firestoreItems.forEach(item => {
+      merged.set(item.id, item)
+    })
+
+    // Add local items, overwriting if they're newer
+    localItems.forEach(item => {
+      const existing = merged.get(item.id)
+      if (!existing || this.isNewer(item.createdAt || item.updatedAt, existing.createdAt || existing.updatedAt)) {
+        merged.set(item.id, item)
+      }
+    })
+
+    return Array.from(merged.values())
   }
 
   /**
-   * Initialize sync for a user
+   * Merge user data
    */
-  async initializeSync(userId: string, onDataChange: (data: LocalData) => void): Promise<void> {
-    // Load initial data from Firestore
-    const loadResult = await this.syncFromFirestore(userId)
+  private mergeUser(localUser: User, firestoreUser: User | null): User {
+    if (!firestoreUser) return localUser
     
-    if (loadResult.success && loadResult.data) {
-      onDataChange(loadResult.data)
+    return this.isNewer(localUser.updatedAt, firestoreUser.updatedAt) 
+      ? localUser 
+      : firestoreUser
+  }
+
+  /**
+   * Upload data to Firestore
+   */
+  private async uploadToFirestore(userId: string, data: LocalData): Promise<void> {
+    const batch = writeBatch(db)
+
+    // Upload user data
+    batch.set(doc(db, 'users', userId), {
+      ...data.user,
+      updatedAt: serverTimestamp()
+    })
+
+    // Upload transactions
+    data.transactions.forEach(transaction => {
+      const docRef = doc(db, 'users', userId, 'transactions', transaction.id)
+      batch.set(docRef, {
+        ...transaction,
+        updatedAt: serverTimestamp()
+      })
+    })
+
+    // Upload categories
+    data.categories.forEach(category => {
+      const docRef = doc(db, 'users', userId, 'categories', category.id)
+      batch.set(docRef, {
+        ...category,
+        updatedAt: serverTimestamp()
+      })
+    })
+
+    // Upload budgets
+    data.budgets.forEach(budget => {
+      const docRef = doc(db, 'users', userId, 'budgets', budget.id)
+      batch.set(docRef, {
+        ...budget,
+        updatedAt: serverTimestamp()
+      })
+    })
+
+    await batch.commit()
+  }
+
+  /**
+   * Set up real-time listeners for a user
+   */
+  public setupRealtimeSync(userId: string, onDataChange: (data: LocalData) => void): SyncListener {
+    const listeners: Unsubscribe[] = []
+
+    // Listen to transactions
+    const transactionsQuery = query(
+      collection(db, 'users', userId, 'transactions'),
+      orderBy('createdAt', 'desc')
+    )
+    
+    listeners.push(onSnapshot(transactionsQuery, async (snapshot) => {
+      const transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Transaction[]
+      const localData = await this.getLocalData()
+      if (localData) {
+        const updatedData = { ...localData, transactions }
+        await this.saveLocalData(updatedData)
+        onDataChange(updatedData)
+      }
+    }))
+
+    // Listen to categories
+    const categoriesQuery = query(
+      collection(db, 'users', userId, 'categories'),
+      orderBy('createdAt', 'desc')
+    )
+    
+    listeners.push(onSnapshot(categoriesQuery, async (snapshot) => {
+      const categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Category[]
+      const localData = await this.getLocalData()
+      if (localData) {
+        const updatedData = { ...localData, categories }
+        await this.saveLocalData(updatedData)
+        onDataChange(updatedData)
+      }
+    }))
+
+    // Listen to budgets
+    const budgetsQuery = query(
+      collection(db, 'users', userId, 'budgets'),
+      orderBy('createdAt', 'desc')
+    )
+    
+    listeners.push(onSnapshot(budgetsQuery, async (snapshot) => {
+      const budgets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Budget[]
+      const localData = await this.getLocalData()
+      if (localData) {
+        const updatedData = { ...localData, budgets }
+        await this.saveLocalData(updatedData)
+        onDataChange(updatedData)
+      }
+    }))
+
+    const unsubscribe = () => {
+      listeners.forEach(unsub => unsub())
     }
 
-    // Set up real-time sync
-    this.setupRealtimeSync(userId, onDataChange)
+    const syncListener: SyncListener = {
+      unsubscribe,
+      lastSync: Date.now()
+    }
+
+    this.syncListeners.set(userId, syncListener)
+    return syncListener
   }
 
   /**
-   * Cleanup sync for a user
+   * Remove real-time listeners for a user
    */
-  cleanupSync(userId: string): void {
-    this.removeRealtimeSync(userId)
+  public removeRealtimeSync(userId: string): void {
+    const listener = this.syncListeners.get(userId)
+    if (listener) {
+      listener.unsubscribe()
+      this.syncListeners.delete(userId)
+    }
+  }
+
+  /**
+   * Force sync data (useful for manual refresh)
+   */
+  public async forceSync(userId: string): Promise<SyncResult> {
+    return this.syncData(userId)
+  }
+
+  /**
+   * Clear all local data
+   */
+  public async clearLocalData(): Promise<void> {
+    try {
+      await AsyncStorage.multiRemove([this.dataKey, this.syncKey])
+    } catch (error) {
+      console.error('Error clearing local data:', error)
+    }
   }
 }
 

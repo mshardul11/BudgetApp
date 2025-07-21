@@ -34,11 +34,11 @@ jobs:
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}' > $HOME/firebase-service-account.json
           export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
-        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}
+        if: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 != '' }}
       
       - name: Deploy to Firebase Hosting
         run: |
-          if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}" ]; then
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
             export GOOGLE_APPLICATION_CREDENTIALS=$HOME/firebase-service-account.json
             npx firebase-tools deploy --only hosting --project budgetapp-254a2 --non-interactive
           else
@@ -47,6 +47,7 @@ jobs:
           fi
         env:
           FIREBASE_CLI_EXPERIMENTS: webframeworks
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BUDGETAPP_254A2 }}
       
       - name: Clean up
         run: |

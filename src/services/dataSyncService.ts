@@ -74,15 +74,25 @@ class DataSyncService {
    * Get local data from localStorage
    */
   private getLocalData(): LocalData | null {
-    const data = localStorage.getItem(this.dataKey)
-    return data ? JSON.parse(data) : null
+    try {
+      const data = localStorage.getItem(this.dataKey)
+      return data ? JSON.parse(data) : null
+    } catch (error) {
+      // If localStorage data is corrupted, clear it
+      localStorage.removeItem(this.dataKey)
+      return null
+    }
   }
 
   /**
    * Save data to localStorage
    */
   private saveLocalData(data: LocalData): void {
-    localStorage.setItem(this.dataKey, JSON.stringify(data))
+    try {
+      localStorage.setItem(this.dataKey, JSON.stringify(data))
+    } catch (error) {
+      throw new Error('Failed to save data to local storage')
+    }
   }
 
   /**
@@ -98,185 +108,153 @@ class DataSyncService {
   }
 
   /**
-   * Handle online status change - trigger sync when coming back online
+   * Compare timestamps using createdAt as fallback
+   */
+  private isNewerWithFallback(localData: any, firestoreData: any): boolean {
+    // Try updatedAt first, then createdAt
+    const localTime = localData.updatedAt || localData.createdAt
+    const firestoreTime = firestoreData.updatedAt || firestoreData.createdAt
+    
+    if (!localTime || !firestoreTime) return false
+    
+    return this.isNewer(localTime, firestoreTime)
+  }
+
+  /**
+   * Handle online status change
    */
   private handleOnlineStatusChange(): void {
-    // Trigger sync for all active listeners
+    // Trigger sync for all active listeners when coming back online
     this.syncListeners.forEach((_, userId) => {
-      this.triggerSync(userId)
+      this.triggerSync(userId).catch(() => {
+        // Silent fail for background sync
+      })
     })
   }
 
   /**
-   * Trigger a sync for a specific user
+   * Trigger sync for a specific user
    */
   private async triggerSync(userId: string): Promise<void> {
-    const localData = this.getLocalData()
-    if (localData) {
-      await this.mergeData(userId, localData)
+    const listener = this.syncListeners.get(userId)
+    if (listener && this.isOnline) {
+      // Trigger a sync when coming back online
+      const localData = this.getLocalData()
+      if (localData) {
+        await this.syncToFirestore(userId, localData).catch(() => {
+          // Silent fail for background sync
+        })
+      }
     }
   }
 
   /**
-   * Set up real-time sync listeners for a user
+   * Setup real-time sync for a user
    */
   setupRealtimeSync(userId: string, onDataChange: (data: LocalData) => void): Unsubscribe {
+    if (!userId) {
+      throw new Error('User ID is required for real-time sync')
+    }
+
     // Remove existing listener if any
     this.removeRealtimeSync(userId)
 
-    const listeners: Unsubscribe[] = []
-    let lastSync = Date.now()
+    // Setup listeners for transactions, categories, and budgets
+    const transactionsRef = collection(db, 'users', userId, 'transactions')
+    const categoriesRef = collection(db, 'users', userId, 'categories')
+    const budgetsRef = collection(db, 'users', userId, 'budgets')
 
-    // Listen to transactions
-    const transactionsQuery = query(
-      collection(db, 'users', userId, 'transactions'),
-      orderBy('createdAt', 'desc')
-    )
-    const transactionsUnsubscribe = onSnapshot(transactionsQuery, (snapshot) => {
-      const transactions: Transaction[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        transactions.push({
+    const unsubscribeTransactions = onSnapshot(
+      query(transactionsRef, orderBy('createdAt', 'desc')),
+      (snapshot) => {
+        const transactions = snapshot.docs.map(doc => ({
           id: doc.id,
-          type: data.type,
-          amount: data.amount,
-          description: data.description,
-          category: data.category,
-          date: data.date,
-          createdAt: data.createdAt,
-        })
-      })
+          ...doc.data()
+        })) as Transaction[]
 
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, transactions }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to categories
-    const categoriesQuery = query(
-      collection(db, 'users', userId, 'categories'),
-      orderBy('name')
-    )
-    const categoriesUnsubscribe = onSnapshot(categoriesQuery, async (snapshot) => {
-      let categories: Category[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        categories.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          color: data.color,
-          icon: data.icon,
-        })
-      })
-
-      // Ensure categories are properly structured
-      if (!categories || categories.length === 0) {
-        console.log('No categories found in real-time sync, using default categories')
-        const { generateCurrentMonthData } = await import('../utils/resetData')
-        const defaultData = generateCurrentMonthData()
-        categories = defaultData.categories
-      }
-
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, categories }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to budgets
-    const budgetsQuery = query(
-      collection(db, 'users', userId, 'budgets'),
-      orderBy('startDate')
-    )
-    const budgetsUnsubscribe = onSnapshot(budgetsQuery, (snapshot) => {
-      const budgets: Budget[] = []
-      snapshot.forEach((doc) => {
-        const data = doc.data()
-        budgets.push({
-          id: doc.id,
-          category: data.category,
-          amount: data.amount,
-          spent: data.spent,
-          period: data.period,
-          startDate: data.startDate,
-        })
-      })
-
-      // Update local data
-      const localData = this.getLocalData()
-      if (localData) {
-        const updatedData = { ...localData, budgets }
-        this.saveLocalData(updatedData)
-        onDataChange(updatedData)
-        lastSync = Date.now()
-      }
-    })
-
-    // Listen to user data
-    const userUnsubscribe = onSnapshot(doc(db, 'users', userId), (doc) => {
-      if (doc.exists()) {
-        const userData = doc.data()
-        const user: User = {
-          id: userId,
-          name: userData.name || '',
-          email: userData.email || '',
-          avatar: userData.avatar || undefined,
-          currency: userData.currency || 'USD',
-          timezone: userData.timezone || 'America/New_York',
-          monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
-          monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
-          savingsGoal: userData.savingsGoal || 0,
-          notifications: userData.notifications || {
-            email: true,
-            push: true,
-            budgetAlerts: true,
-            weeklyReports: false,
-          },
-          preferences: userData.preferences || {
-            theme: 'light',
-            language: 'en',
-            dateFormat: 'MM/dd/yyyy',
-            currencyFormat: '$#,##0.00',
-          },
-          createdAt: userData.createdAt || new Date().toISOString(),
-          updatedAt: userData.updatedAt || new Date().toISOString(),
-        }
-
-        // Update local data
         const localData = this.getLocalData()
         if (localData) {
-          const updatedData = { ...localData, user }
-          this.saveLocalData(updatedData)
-          onDataChange(updatedData)
-          lastSync = Date.now()
+          localData.transactions = transactions
+          this.saveLocalData(localData)
+          onDataChange(localData)
         }
+      },
+      (error) => {
+        throw new Error(`Failed to sync transactions: ${error.message}`)
       }
-    })
+    )
 
-    listeners.push(transactionsUnsubscribe, categoriesUnsubscribe, budgetsUnsubscribe, userUnsubscribe)
+    const unsubscribeCategories = onSnapshot(
+      categoriesRef,
+      (snapshot) => {
+        const categories = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Category[]
 
-    // Store the listener
+        // Use default categories if none found
+        if (categories.length === 0) {
+          categories.push(
+            { id: 'food', name: 'Food & Dining', type: 'expense', color: '#FF6B6B', icon: '🍽️' },
+            { id: 'transport', name: 'Transportation', type: 'expense', color: '#4ECDC4', icon: '🚗' },
+            { id: 'entertainment', name: 'Entertainment', type: 'expense', color: '#45B7D1', icon: '🎬' },
+            { id: 'shopping', name: 'Shopping', type: 'expense', color: '#96CEB4', icon: '🛍️' },
+            { id: 'health', name: 'Healthcare', type: 'expense', color: '#FFEAA7', icon: '🏥' },
+            { id: 'utilities', name: 'Utilities', type: 'expense', color: '#DDA0DD', icon: '⚡' },
+            { id: 'income', name: 'Income', type: 'income', color: '#98D8C8', icon: '💰' }
+          )
+        }
+
+        const localData = this.getLocalData()
+        if (localData) {
+          localData.categories = categories
+          this.saveLocalData(localData)
+          onDataChange(localData)
+        }
+      },
+      (error) => {
+        throw new Error(`Failed to sync categories: ${error.message}`)
+      }
+    )
+
+    const unsubscribeBudgets = onSnapshot(
+      budgetsRef,
+      (snapshot) => {
+        const budgets = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Budget[]
+
+        const localData = this.getLocalData()
+        if (localData) {
+          localData.budgets = budgets
+          this.saveLocalData(localData)
+          onDataChange(localData)
+        }
+      },
+      (error) => {
+        throw new Error(`Failed to sync budgets: ${error.message}`)
+      }
+    )
+
+    // Store the unsubscribe function
+    const unsubscribe = () => {
+      unsubscribeTransactions()
+      unsubscribeCategories()
+      unsubscribeBudgets()
+    }
+
     this.syncListeners.set(userId, {
-      unsubscribe: () => listeners.forEach(unsub => unsub()),
-      lastSync
+      unsubscribe,
+      lastSync: Date.now()
     })
 
     // Return unsubscribe function
-    return () => this.removeRealtimeSync(userId)
+    return unsubscribe
   }
 
   /**
-   * Remove real-time sync listeners for a user
+   * Remove real-time sync for a user
    */
   removeRealtimeSync(userId: string): void {
     const listener = this.syncListeners.get(userId)
@@ -287,329 +265,301 @@ class DataSyncService {
   }
 
   /**
-   * Sync local data to Firestore with conflict resolution
+   * Sync local data to Firestore
    */
   async syncToFirestore(userId: string, localData: LocalData): Promise<SyncResult> {
+    if (!userId) {
+      throw new Error('User ID is required for sync')
+    }
+
+    if (!this.isOnline) {
+      return {
+        success: false,
+        message: 'Cannot sync while offline'
+      }
+    }
+
     try {
       const batch = writeBatch(db)
-      const conflicts: any = {}
+      let conflictCount = 0
+      const conflicts: SyncResult['conflicts'] = {
+        transactions: [],
+        categories: [],
+        budgets: []
+      }
 
       // Sync transactions
-      const transactionsRef = collection(db, 'users', userId, 'transactions')
-      const existingTransactions = await getDocs(transactionsRef)
-      const existingTransactionMap = new Map()
-      
-      existingTransactions.forEach(doc => {
-        const data = doc.data()
-        existingTransactionMap.set(doc.id, data)
-      })
-
       for (const transaction of localData.transactions) {
-        const existing = existingTransactionMap.get(transaction.id)
+        const transactionRef = doc(db, 'users', userId, 'transactions', transaction.id)
         
-        if (!existing) {
-          // New transaction - add to Firestore
-          const transactionRef = doc(transactionsRef, transaction.id)
-          batch.set(transactionRef, {
-            ...transaction,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(transaction.createdAt, existing.updatedAt || existing.createdAt)) {
-          // Local transaction is newer - update Firestore
-          const transactionRef = doc(transactionsRef, transaction.id)
-          batch.set(transactionRef, {
-            ...transaction,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, transaction.createdAt)) {
-          // Firestore transaction is newer - mark as conflict
-          if (!conflicts.transactions) conflicts.transactions = []
-          conflicts.transactions.push(transaction)
+        try {
+          const existingDoc = await getDoc(transactionRef)
+          
+          if (!existingDoc.exists()) {
+            // New transaction
+            batch.set(transactionRef, {
+              ...transaction,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } else {
+            // Check for conflicts
+            const existingData = existingDoc.data()
+            if (this.isNewerWithFallback(transaction, existingData)) {
+              batch.update(transactionRef, {
+                ...transaction,
+                updatedAt: serverTimestamp()
+              })
+            } else {
+              conflictCount++
+              conflicts.transactions?.push(transaction)
+            }
+          }
+        } catch (error) {
+          throw new Error(`Failed to sync transaction ${transaction.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
 
       // Sync categories
-      const categoriesRef = collection(db, 'users', userId, 'categories')
-      const existingCategories = await getDocs(categoriesRef)
-      const existingCategoryMap = new Map()
-      
-      existingCategories.forEach(doc => {
-        const data = doc.data()
-        existingCategoryMap.set(doc.id, data)
-      })
-
       for (const category of localData.categories) {
-        const existing = existingCategoryMap.get(category.id)
+        const categoryRef = doc(db, 'users', userId, 'categories', category.id)
         
-        if (!existing) {
-          // New category - add to Firestore
-          const categoryRef = doc(categoriesRef, category.id)
-          batch.set(categoryRef, {
-            ...category,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(category.id, existing.updatedAt || existing.createdAt)) {
-          // Local category is newer - update Firestore
-          const categoryRef = doc(categoriesRef, category.id)
-          batch.set(categoryRef, {
-            ...category,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, category.id)) {
-          // Firestore category is newer - mark as conflict
-          if (!conflicts.categories) conflicts.categories = []
-          conflicts.categories.push(category)
+        try {
+          const existingDoc = await getDoc(categoryRef)
+          
+          if (!existingDoc.exists()) {
+            batch.set(categoryRef, {
+              ...category,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } else {
+            const existingData = existingDoc.data()
+            if (this.isNewerWithFallback(category, existingData)) {
+              batch.update(categoryRef, {
+                ...category,
+                updatedAt: serverTimestamp()
+              })
+            } else {
+              conflictCount++
+              conflicts.categories?.push(category)
+            }
+          }
+        } catch (error) {
+          throw new Error(`Failed to sync category ${category.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
 
       // Sync budgets
-      const budgetsRef = collection(db, 'users', userId, 'budgets')
-      const existingBudgets = await getDocs(budgetsRef)
-      const existingBudgetMap = new Map()
-      
-      existingBudgets.forEach(doc => {
-        const data = doc.data()
-        existingBudgetMap.set(doc.id, data)
-      })
-
       for (const budget of localData.budgets) {
-        const existing = existingBudgetMap.get(budget.id)
+        const budgetRef = doc(db, 'users', userId, 'budgets', budget.id)
         
-        if (!existing) {
-          // New budget - add to Firestore
-          const budgetRef = doc(budgetsRef, budget.id)
-          batch.set(budgetRef, {
-            ...budget,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(budget.id, existing.updatedAt || existing.createdAt)) {
-          // Local budget is newer - update Firestore
-          const budgetRef = doc(budgetsRef, budget.id)
-          batch.set(budgetRef, {
-            ...budget,
-            updatedAt: serverTimestamp()
-          })
-        } else if (this.isNewer(existing.updatedAt || existing.createdAt, budget.id)) {
-          // Firestore budget is newer - mark as conflict
-          if (!conflicts.budgets) conflicts.budgets = []
-          conflicts.budgets.push(budget)
+        try {
+          const existingDoc = await getDoc(budgetRef)
+          
+          if (!existingDoc.exists()) {
+            batch.set(budgetRef, {
+              ...budget,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            })
+          } else {
+            const existingData = existingDoc.data()
+            if (this.isNewerWithFallback(budget, existingData)) {
+              batch.update(budgetRef, {
+                ...budget,
+                updatedAt: serverTimestamp()
+              })
+            } else {
+              conflictCount++
+              conflicts.budgets?.push(budget)
+            }
+          }
+        } catch (error) {
+          throw new Error(`Failed to sync budget ${budget.id}: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       }
 
+      // Commit the batch
       await batch.commit()
+      
+      // Update sync timestamp
       this.updateSyncTimestamp()
 
       return {
         success: true,
-        message: 'Data synced successfully',
-        conflicts: Object.keys(conflicts).length > 0 ? conflicts : undefined
+        message: conflictCount > 0 
+          ? `Sync completed with ${conflictCount} conflicts` 
+          : 'Sync completed successfully',
+        conflicts: conflictCount > 0 ? conflicts : undefined,
+        data: localData
       }
     } catch (error) {
-      console.error('Error syncing to Firestore:', error)
-      return {
-        success: false,
-        message: `Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
+      throw new Error(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Sync Firestore data to local storage
+   * Sync data from Firestore to local storage
    */
   async syncFromFirestore(userId: string): Promise<{ success: boolean; data?: LocalData; message: string }> {
+    if (!userId) {
+      throw new Error('User ID is required for sync')
+    }
+
+    if (!this.isOnline) {
+      return {
+        success: false,
+        message: 'Cannot sync while offline'
+      }
+    }
+
     try {
-      // Load transactions
-      const transactionsQuery = query(
-        collection(db, 'users', userId, 'transactions'),
-        orderBy('createdAt', 'desc')
-      )
+      // Get transactions
+      const transactionsRef = collection(db, 'users', userId, 'transactions')
+      const transactionsQuery = query(transactionsRef, orderBy('createdAt', 'desc'))
       const transactionsSnapshot = await getDocs(transactionsQuery)
-      const transactions: Transaction[] = []
-      
-      transactionsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        transactions.push({
-          id: doc.id,
-          type: data.type,
-          amount: data.amount,
-          description: data.description,
-          category: data.category,
-          date: data.date,
-          createdAt: data.createdAt,
-        })
-      })
+      const transactions = transactionsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Transaction[]
 
-      // Load categories
-      const categoriesQuery = query(
-        collection(db, 'users', userId, 'categories'),
-        orderBy('name')
-      )
-      const categoriesSnapshot = await getDocs(categoriesQuery)
-      let categories: Category[] = []
-      
-      categoriesSnapshot.forEach((doc) => {
-        const data = doc.data()
-        categories.push({
-          id: doc.id,
-          name: data.name,
-          type: data.type,
-          color: data.color,
-          icon: data.icon,
-        })
-      })
+      // Get categories
+      const categoriesRef = collection(db, 'users', userId, 'categories')
+      const categoriesSnapshot = await getDocs(categoriesRef)
+      let categories = categoriesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Category[]
 
-      // Load budgets
-      const budgetsQuery = query(
-        collection(db, 'users', userId, 'budgets'),
-        orderBy('startDate')
-      )
-      const budgetsSnapshot = await getDocs(budgetsQuery)
-      const budgets: Budget[] = []
-      
-      budgetsSnapshot.forEach((doc) => {
-        const data = doc.data()
-        budgets.push({
-          id: doc.id,
-          category: data.category,
-          amount: data.amount,
-          spent: data.spent,
-          period: data.period,
-          startDate: data.startDate,
-        })
-      })
-
-      // Load user data
-      const userDoc = await getDoc(doc(db, 'users', userId))
-      let user: User
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data()
-        user = {
-          id: userId,
-          name: userData.name || '',
-          email: userData.email || '',
-          avatar: userData.avatar || undefined,
-          currency: userData.currency || 'USD',
-          timezone: userData.timezone || 'America/New_York',
-          monthlyIncomeGoal: userData.monthlyIncomeGoal || 0,
-          monthlyExpenseGoal: userData.monthlyExpenseGoal || 0,
-          savingsGoal: userData.savingsGoal || 0,
-          notifications: userData.notifications || {
-            email: true,
-            push: true,
-            budgetAlerts: true,
-            weeklyReports: false,
-          },
-          preferences: userData.preferences || {
-            theme: 'light',
-            language: 'en',
-            dateFormat: 'MM/dd/yyyy',
-            currencyFormat: '$#,##0.00',
-          },
-          createdAt: userData.createdAt || new Date().toISOString(),
-          updatedAt: userData.updatedAt || new Date().toISOString(),
-        }
-      } else {
-        throw new Error('User document not found')
+      // Use default categories if none found
+      if (categories.length === 0) {
+        categories = [
+          { id: 'food', name: 'Food & Dining', type: 'expense', color: '#FF6B6B', icon: '🍽️' },
+          { id: 'transport', name: 'Transportation', type: 'expense', color: '#4ECDC4', icon: '🚗' },
+          { id: 'entertainment', name: 'Entertainment', type: 'expense', color: '#45B7D1', icon: '🎬' },
+          { id: 'shopping', name: 'Shopping', type: 'expense', color: '#96CEB4', icon: '🛍️' },
+          { id: 'health', name: 'Healthcare', type: 'expense', color: '#FFEAA7', icon: '🏥' },
+          { id: 'utilities', name: 'Utilities', type: 'expense', color: '#DDA0DD', icon: '⚡' },
+          { id: 'income', name: 'Income', type: 'income', color: '#98D8C8', icon: '💰' }
+        ]
       }
 
-      // Ensure categories are properly structured
-      if (!categories || categories.length === 0) {
-        console.log('No categories found in Firestore, using default categories')
-        const { generateCurrentMonthData } = await import('../utils/resetData')
-        const defaultData = generateCurrentMonthData()
-        categories = defaultData.categories
-      }
+      // Get budgets
+      const budgetsRef = collection(db, 'users', userId, 'budgets')
+      const budgetsSnapshot = await getDocs(budgetsRef)
+      const budgets = budgetsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Budget[]
 
-      const data: LocalData = {
+      // Create local data object
+      const localData: LocalData = {
         transactions,
         categories,
         budgets,
-        user
+        user: {
+          id: userId,
+          name: 'User',
+          email: '',
+          avatar: undefined,
+          currency: 'USD',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          monthlyIncomeGoal: 0,
+          monthlyExpenseGoal: 0,
+          savingsGoal: 0,
+          notifications: {
+            email: true,
+            push: true,
+            budgetAlerts: true,
+            weeklyReports: false
+          },
+          preferences: {
+            theme: 'light',
+            language: 'en',
+            dateFormat: 'MM/DD/YYYY',
+            currencyFormat: '$#,##0.00'
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
       }
 
       // Save to localStorage
-      this.saveLocalData(data)
+      this.saveLocalData(localData)
       this.updateSyncTimestamp()
 
       return {
         success: true,
-        data,
-        message: 'Data loaded from Firestore successfully'
+        data: localData,
+        message: 'Data synced from Firestore successfully'
       }
     } catch (error) {
-      console.error('Error syncing from Firestore:', error)
-      return {
-        success: false,
-        message: `Load failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
+      throw new Error(`Failed to sync from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Merge local and remote data with conflict resolution
+   * Merge local and remote data
    */
   async mergeData(userId: string, localData: LocalData): Promise<SyncResult> {
+    if (!userId) {
+      throw new Error('User ID is required for merge')
+    }
+
     try {
-      // First, sync local data to Firestore
-      const syncResult = await this.syncToFirestore(userId, localData)
-      
-      if (!syncResult.success) {
-        return syncResult
+      // First sync from Firestore to get latest remote data
+      const remoteSync = await this.syncFromFirestore(userId)
+      if (!remoteSync.success || !remoteSync.data) {
+        throw new Error('Failed to get remote data for merge')
       }
 
-      // Then, load the latest data from Firestore
-      const loadResult = await this.syncFromFirestore(userId)
-      
-      if (!loadResult.success) {
-        return {
-          success: false,
-          message: `Merge failed: ${loadResult.message}`
-        }
+      const remoteData = remoteSync.data
+      const mergedData: LocalData = {
+        transactions: [...localData.transactions, ...remoteData.transactions],
+        categories: remoteData.categories.length > 0 ? remoteData.categories : localData.categories,
+        budgets: [...localData.budgets, ...remoteData.budgets],
+        user: localData.user
       }
+
+      // Save merged data
+      this.saveLocalData(mergedData)
 
       return {
         success: true,
         message: 'Data merged successfully',
-        conflicts: syncResult.conflicts,
-        data: loadResult.data
+        data: mergedData
       }
     } catch (error) {
-      console.error('Error merging data:', error)
-      return {
-        success: false,
-        message: `Merge failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-      }
+      throw new Error(`Failed to merge data: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Check if sync is needed based on last sync timestamp
+   * Check if sync is needed
    */
   isSyncNeeded(): boolean {
     const lastSync = this.getLastSyncTimestamp()
     const now = Date.now()
-    const syncInterval = 5 * 60 * 1000 // 5 minutes
-    
-    return (now - lastSync) > syncInterval
+    return now - lastSync > 5 * 60 * 1000 // 5 minutes
   }
 
   /**
-   * Force a complete sync regardless of timestamp
+   * Force sync regardless of timestamp
    */
   async forceSync(userId: string, localData: LocalData): Promise<SyncResult> {
-    return this.mergeData(userId, localData)
+    return this.syncToFirestore(userId, localData)
   }
 
   /**
-   * Clear sync timestamp (useful for testing or reset)
+   * Clear sync timestamp
    */
   clearSyncTimestamp(): void {
     localStorage.removeItem(this.syncKey)
   }
 
   /**
-   * Get current online status
+   * Get online status
    */
   getOnlineStatus(): boolean {
     return this.isOnline
@@ -619,15 +569,19 @@ class DataSyncService {
    * Initialize sync for a user
    */
   async initializeSync(userId: string, onDataChange: (data: LocalData) => void): Promise<void> {
-    // Load initial data from Firestore
-    const loadResult = await this.syncFromFirestore(userId)
-    
-    if (loadResult.success && loadResult.data) {
-      onDataChange(loadResult.data)
+    if (!userId) {
+      throw new Error('User ID is required for sync initialization')
     }
 
-    // Set up real-time sync
-    this.setupRealtimeSync(userId, onDataChange)
+    try {
+      // Setup real-time sync
+      this.setupRealtimeSync(userId, onDataChange)
+
+      // Initial sync from Firestore
+      await this.syncFromFirestore(userId)
+    } catch (error) {
+      throw new Error(`Failed to initialize sync: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
   }
 
   /**
@@ -638,4 +592,5 @@ class DataSyncService {
   }
 }
 
-export const dataSyncService = new DataSyncService() 
+export const dataSyncService = new DataSyncService()
+export default dataSyncService 

@@ -26,7 +26,7 @@ import {
 } from 'lucide-react'
 import { exportToCSV, exportToJSON, importFromJSON } from '../utils/exportData'
 import { resetToCurrentMonth, clearAllData } from '../utils/resetData'
-import { clearTestData, hasTestData } from '../utils/clearTestData'
+import { clearTestData, containsTestData } from '../utils/clearTestData'
 import { formatCurrency } from '../utils/formatters'
 
 export default function Profile() {
@@ -37,7 +37,7 @@ export default function Profile() {
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState<User>(user)
   const [activeTab, setActiveTab] = useState<'profile' | 'goals' | 'notifications' | 'preferences' | 'data'>('profile')
-  const [showTestDataWarning, setShowTestDataWarning] = useState(hasTestData())
+  const [showTestDataWarning, setShowTestDataWarning] = useState(containsTestData())
   const [isSaving, setIsSaving] = useState(false)
 
   // Sync formData with user data from context

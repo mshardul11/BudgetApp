@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "node scripts/validate-env.js && tsc && vite build",
     "preview": "vite preview",
-    "deploy:firebase": "npm run build && firebase deploy",
-    "deploy:netlify": "npm run build && netlify deploy --prod --dir=dist",
-    "deploy:vercel": "vercel --prod",
-    "deploy:github": "npm run build && gh-pages -d dist"
+    "setup:env": "node scripts/setup-env.js",
+    "validate:env": "node scripts/validate-env.js",
+    "deploy:firebase": "npm run validate:env && npm run build && firebase deploy",
+    "deploy:netlify": "npm run validate:env && npm run build && netlify deploy --prod --dir=dist",
+    "deploy:vercel": "npm run validate:env && vercel --prod",
+    "deploy:github": "npm run validate:env && npm run build && gh-pages -d dist"
   },
   "dependencies": {
     "date-fns": "^2.30.0",

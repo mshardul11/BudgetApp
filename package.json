@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/validate-env.js && tsc && vite build",
+    "build": "node scripts/validate-env.js && npx tsc && vite build",
     "preview": "vite preview",
     "setup:env": "node scripts/setup-env.js",
     "validate:env": "node scripts/validate-env.js",

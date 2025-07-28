@@ -220,10 +220,6 @@ class UserService {
       }
 
       // Validate inputs
-      if (data.email && !this.validateEmail(data.email)) {
-        throw new Error('Invalid email format')
-      }
-
       if (data.phoneNumber && !this.validatePhoneNumber(data.phoneNumber)) {
         throw new Error('Invalid phone number format')
       }

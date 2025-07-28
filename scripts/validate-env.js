@@ -14,6 +14,40 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Function to load .env.local file
+function loadEnvFile() {
+  const envLocalPath = path.join(process.cwd(), '.env.local');
+  
+  if (fs.existsSync(envLocalPath)) {
+    const envContent = fs.readFileSync(envLocalPath, 'utf8');
+    const lines = envContent.split('\n');
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Skip comments and empty lines
+      if (trimmedLine.startsWith('#') || trimmedLine === '') {
+        continue;
+      }
+      
+      // Parse key=value pairs
+      const equalIndex = trimmedLine.indexOf('=');
+      if (equalIndex > 0) {
+        const key = trimmedLine.substring(0, equalIndex);
+        const value = trimmedLine.substring(equalIndex + 1);
+        
+        // Set environment variable if not already set
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+  }
+}
+
+// Load environment variables from .env.local
+loadEnvFile();
+
 // Required environment variables
 const requiredEnvVars = [
   'VITE_FIREBASE_API_KEY',

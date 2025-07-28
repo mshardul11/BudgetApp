@@ -108,11 +108,24 @@ class DataSyncService {
   }
 
   /**
+   * Compare timestamps using createdAt as fallback
+   */
+  private isNewerWithFallback(localData: any, firestoreData: any): boolean {
+    // Try updatedAt first, then createdAt
+    const localTime = localData.updatedAt || localData.createdAt
+    const firestoreTime = firestoreData.updatedAt || firestoreData.createdAt
+    
+    if (!localTime || !firestoreTime) return false
+    
+    return this.isNewer(localTime, firestoreTime)
+  }
+
+  /**
    * Handle online status change
    */
   private handleOnlineStatusChange(): void {
     // Trigger sync for all active listeners when coming back online
-    this.syncListeners.forEach((listener, userId) => {
+    this.syncListeners.forEach((_, userId) => {
       this.triggerSync(userId).catch(() => {
         // Silent fail for background sync
       })
@@ -182,13 +195,13 @@ class DataSyncService {
         // Use default categories if none found
         if (categories.length === 0) {
           categories.push(
-            { id: 'food', name: 'Food & Dining', color: '#FF6B6B', icon: '🍽️' },
-            { id: 'transport', name: 'Transportation', color: '#4ECDC4', icon: '🚗' },
-            { id: 'entertainment', name: 'Entertainment', color: '#45B7D1', icon: '🎬' },
-            { id: 'shopping', name: 'Shopping', color: '#96CEB4', icon: '🛍️' },
-            { id: 'health', name: 'Healthcare', color: '#FFEAA7', icon: '🏥' },
-            { id: 'utilities', name: 'Utilities', color: '#DDA0DD', icon: '⚡' },
-            { id: 'income', name: 'Income', color: '#98D8C8', icon: '💰' }
+            { id: 'food', name: 'Food & Dining', type: 'expense', color: '#FF6B6B', icon: '🍽️' },
+            { id: 'transport', name: 'Transportation', type: 'expense', color: '#4ECDC4', icon: '🚗' },
+            { id: 'entertainment', name: 'Entertainment', type: 'expense', color: '#45B7D1', icon: '🎬' },
+            { id: 'shopping', name: 'Shopping', type: 'expense', color: '#96CEB4', icon: '🛍️' },
+            { id: 'health', name: 'Healthcare', type: 'expense', color: '#FFEAA7', icon: '🏥' },
+            { id: 'utilities', name: 'Utilities', type: 'expense', color: '#DDA0DD', icon: '⚡' },
+            { id: 'income', name: 'Income', type: 'income', color: '#98D8C8', icon: '💰' }
           )
         }
 
@@ -292,7 +305,7 @@ class DataSyncService {
           } else {
             // Check for conflicts
             const existingData = existingDoc.data()
-            if (this.isNewer(transaction.updatedAt, existingData.updatedAt)) {
+            if (this.isNewerWithFallback(transaction, existingData)) {
               batch.update(transactionRef, {
                 ...transaction,
                 updatedAt: serverTimestamp()
@@ -322,7 +335,7 @@ class DataSyncService {
             })
           } else {
             const existingData = existingDoc.data()
-            if (this.isNewer(category.updatedAt, existingData.updatedAt)) {
+            if (this.isNewerWithFallback(category, existingData)) {
               batch.update(categoryRef, {
                 ...category,
                 updatedAt: serverTimestamp()
@@ -352,7 +365,7 @@ class DataSyncService {
             })
           } else {
             const existingData = existingDoc.data()
-            if (this.isNewer(budget.updatedAt, existingData.updatedAt)) {
+            if (this.isNewerWithFallback(budget, existingData)) {
               batch.update(budgetRef, {
                 ...budget,
                 updatedAt: serverTimestamp()
@@ -422,13 +435,13 @@ class DataSyncService {
       // Use default categories if none found
       if (categories.length === 0) {
         categories = [
-          { id: 'food', name: 'Food & Dining', color: '#FF6B6B', icon: '🍽️' },
-          { id: 'transport', name: 'Transportation', color: '#4ECDC4', icon: '🚗' },
-          { id: 'entertainment', name: 'Entertainment', color: '#45B7D1', icon: '🎬' },
-          { id: 'shopping', name: 'Shopping', color: '#96CEB4', icon: '🛍️' },
-          { id: 'health', name: 'Healthcare', color: '#FFEAA7', icon: '🏥' },
-          { id: 'utilities', name: 'Utilities', color: '#DDA0DD', icon: '⚡' },
-          { id: 'income', name: 'Income', color: '#98D8C8', icon: '💰' }
+          { id: 'food', name: 'Food & Dining', type: 'expense', color: '#FF6B6B', icon: '🍽️' },
+          { id: 'transport', name: 'Transportation', type: 'expense', color: '#4ECDC4', icon: '🚗' },
+          { id: 'entertainment', name: 'Entertainment', type: 'expense', color: '#45B7D1', icon: '🎬' },
+          { id: 'shopping', name: 'Shopping', type: 'expense', color: '#96CEB4', icon: '🛍️' },
+          { id: 'health', name: 'Healthcare', type: 'expense', color: '#FFEAA7', icon: '🏥' },
+          { id: 'utilities', name: 'Utilities', type: 'expense', color: '#DDA0DD', icon: '⚡' },
+          { id: 'income', name: 'Income', type: 'income', color: '#98D8C8', icon: '💰' }
         ]
       }
 
@@ -449,10 +462,26 @@ class DataSyncService {
           id: userId,
           name: 'User',
           email: '',
+          avatar: undefined,
+          currency: 'USD',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          monthlyIncomeGoal: 0,
+          monthlyExpenseGoal: 0,
+          savingsGoal: 0,
+          notifications: {
+            email: true,
+            push: true,
+            budgetAlerts: true,
+            weeklyReports: false
+          },
           preferences: {
             theme: 'light',
-            currency: 'USD'
-          }
+            language: 'en',
+            dateFormat: 'MM/DD/YYYY',
+            currencyFormat: '$#,##0.00'
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
       }
 

@@ -13,7 +13,6 @@ import {
 } from 'firebase/firestore'
 import { db } from '../config/firebase'
 
-
 export interface UserProfile {
   uid: string
   email: string
@@ -68,17 +67,61 @@ class UserService {
   private readonly collectionName = 'users'
 
   /**
+   * Validate email format
+   */
+  private validateEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    return emailRegex.test(email)
+  }
+
+  /**
+   * Validate phone number format
+   */
+  private validatePhoneNumber(phoneNumber: string): boolean {
+    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/
+    return phoneRegex.test(phoneNumber.replace(/[\s\-\(\)]/g, ''))
+  }
+
+  /**
+   * Sanitize string input
+   */
+  private sanitizeString(input: string): string {
+    return input.trim().replace(/[<>]/g, '')
+  }
+
+  /**
    * Create a new user profile in Firestore
    */
   async createUserProfile(data: CreateUserProfileData): Promise<UserProfile> {
     try {
-      const userRef = doc(db, this.collectionName, data.uid)
+      // Input validation
+      if (!data.uid || !data.email || !data.displayName) {
+        throw new Error('Missing required fields')
+      }
+
+      if (!this.validateEmail(data.email)) {
+        throw new Error('Invalid email format')
+      }
+
+      if (data.phoneNumber && !this.validatePhoneNumber(data.phoneNumber)) {
+        throw new Error('Invalid phone number format')
+      }
+
+      // Sanitize inputs
+      const sanitizedData = {
+        ...data,
+        email: this.sanitizeString(data.email),
+        displayName: this.sanitizeString(data.displayName),
+        phoneNumber: data.phoneNumber ? this.sanitizeString(data.phoneNumber) : undefined
+      }
+
+      const userRef = doc(db, this.collectionName, sanitizedData.uid)
       
       const userProfile: Omit<UserProfile, 'uid'> = {
-        email: data.email,
-        displayName: data.displayName,
-        photoURL: data.photoURL || undefined,
-        phoneNumber: data.phoneNumber || undefined,
+        email: sanitizedData.email,
+        displayName: sanitizedData.displayName,
+        photoURL: sanitizedData.photoURL || undefined,
+        phoneNumber: sanitizedData.phoneNumber || undefined,
         currency: 'USD',
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         monthlyIncomeGoal: 0,
@@ -104,16 +147,9 @@ class UserService {
 
       await setDoc(userRef, userProfile)
       
-      // Return the created profile
-      const createdDoc = await getDoc(userRef)
-      if (!createdDoc.exists()) {
-        throw new Error('Failed to create user profile')
-      }
-      
-      return { uid: data.uid, ...createdDoc.data() } as UserProfile
+      return { uid: sanitizedData.uid, ...userProfile }
     } catch (error) {
-      console.error('Error creating user profile:', error)
-      throw error
+      throw new Error(`Failed to create user profile: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -122,6 +158,10 @@ class UserService {
    */
   async getUserProfile(uid: string): Promise<UserProfile | null> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       const userDoc = await getDoc(userRef)
       
@@ -131,16 +171,23 @@ class UserService {
       
       return { uid, ...userDoc.data() } as UserProfile
     } catch (error) {
-      console.error('Error getting user profile:', error)
-      throw error
+      throw new Error(`Failed to get user profile: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
   /**
-   * Get user profile by email
+   * Get user profile by email (restricted to own profile)
    */
-  async getUserProfileByEmail(email: string): Promise<UserProfile | null> {
+  async getUserProfileByEmail(email: string, currentUserId: string): Promise<UserProfile | null> {
     try {
+      if (!email || !currentUserId) {
+        throw new Error('Email and current user ID are required')
+      }
+
+      if (!this.validateEmail(email)) {
+        throw new Error('Invalid email format')
+      }
+
       const usersRef = collection(db, this.collectionName)
       const q = query(usersRef, where('email', '==', email))
       const querySnapshot = await getDocs(q)
@@ -150,10 +197,16 @@ class UserService {
       }
       
       const userDoc = querySnapshot.docs[0]
-      return { uid: userDoc.id, ...userDoc.data() } as UserProfile
+      const userProfile = { uid: userDoc.id, ...userDoc.data() } as UserProfile
+      
+      // Security: Only allow access to own profile
+      if (userProfile.uid !== currentUserId) {
+        throw new Error('Access denied')
+      }
+      
+      return userProfile
     } catch (error) {
-      console.error('Error getting user profile by email:', error)
-      throw error
+      throw new Error(`Failed to get user profile: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -162,10 +215,30 @@ class UserService {
    */
   async updateUserProfile(uid: string, data: UpdateUserProfileData): Promise<UserProfile> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
+      // Validate inputs
+      if (data.email && !this.validateEmail(data.email)) {
+        throw new Error('Invalid email format')
+      }
+
+      if (data.phoneNumber && !this.validatePhoneNumber(data.phoneNumber)) {
+        throw new Error('Invalid phone number format')
+      }
+
+      // Sanitize inputs
+      const sanitizedData = {
+        ...data,
+        displayName: data.displayName ? this.sanitizeString(data.displayName) : undefined,
+        phoneNumber: data.phoneNumber ? this.sanitizeString(data.phoneNumber) : undefined
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       
       const updateData = {
-        ...data,
+        ...sanitizedData,
         updatedAt: serverTimestamp()
       }
       
@@ -179,8 +252,7 @@ class UserService {
       
       return { uid, ...updatedDoc.data() } as UserProfile
     } catch (error) {
-      console.error('Error updating user profile:', error)
-      throw error
+      throw new Error(`Failed to update user profile: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -189,14 +261,17 @@ class UserService {
    */
   async updateLastLogin(uid: string): Promise<void> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       await updateDoc(userRef, {
         lastLoginAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       })
     } catch (error) {
-      console.error('Error updating last login:', error)
-      throw error
+      throw new Error(`Failed to update last login: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -205,14 +280,17 @@ class UserService {
    */
   async deactivateUser(uid: string): Promise<void> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       await updateDoc(userRef, {
         isActive: false,
         updatedAt: serverTimestamp()
       })
     } catch (error) {
-      console.error('Error deactivating user:', error)
-      throw error
+      throw new Error(`Failed to deactivate user: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -221,14 +299,17 @@ class UserService {
    */
   async reactivateUser(uid: string): Promise<void> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       await updateDoc(userRef, {
         isActive: true,
         updatedAt: serverTimestamp()
       })
     } catch (error) {
-      console.error('Error reactivating user:', error)
-      throw error
+      throw new Error(`Failed to reactivate user: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -237,30 +318,14 @@ class UserService {
    */
   async deleteUserProfile(uid: string): Promise<void> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       await deleteDoc(userRef)
     } catch (error) {
-      console.error('Error deleting user profile:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Get all active users (admin function)
-   */
-  async getAllActiveUsers(): Promise<UserProfile[]> {
-    try {
-      const usersRef = collection(db, this.collectionName)
-      const q = query(usersRef, where('isActive', '==', true))
-      const querySnapshot = await getDocs(q)
-      
-      return querySnapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
-      })) as UserProfile[]
-    } catch (error) {
-      console.error('Error getting all active users:', error)
-      throw error
+      throw new Error(`Failed to delete user profile: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -269,47 +334,15 @@ class UserService {
    */
   async userProfileExists(uid: string): Promise<boolean> {
     try {
+      if (!uid) {
+        throw new Error('User ID is required')
+      }
+
       const userRef = doc(db, this.collectionName, uid)
       const userDoc = await getDoc(userRef)
       return userDoc.exists()
     } catch (error) {
-      console.error('Error checking if user profile exists:', error)
-      throw error
-    }
-  }
-
-  /**
-   * Get user statistics (for admin dashboard)
-   */
-  async getUserStatistics(): Promise<{
-    totalUsers: number
-    activeUsers: number
-    inactiveUsers: number
-    newUsersThisMonth: number
-  }> {
-    try {
-      const usersRef = collection(db, this.collectionName)
-      const querySnapshot = await getDocs(usersRef)
-      
-      const users = querySnapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
-      })) as UserProfile[]
-      
-      const now = new Date()
-      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      
-      return {
-        totalUsers: users.length,
-        activeUsers: users.filter(user => user.isActive).length,
-        inactiveUsers: users.filter(user => !user.isActive).length,
-        newUsersThisMonth: users.filter(user => 
-          user.createdAt && user.createdAt.toDate() >= firstDayOfMonth
-        ).length
-      }
-    } catch (error) {
-      console.error('Error getting user statistics:', error)
-      throw error
+      throw new Error(`Failed to check user profile existence: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 }

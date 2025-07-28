@@ -28,15 +28,9 @@ export default function Login() {
     name: ''
   })
 
-  // Debug log
-  useEffect(() => {
-    console.log('[Login] currentUser:', currentUser)
-  }, [currentUser])
-
   // Redirect if user is already authenticated
   useEffect(() => {
     if (currentUser) {
-      console.log('[Login] Redirecting to / because user is authenticated')
       navigate('/')
     }
   }, [currentUser, navigate])
@@ -70,8 +64,22 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    // Input validation
     if (!formData.email || !formData.password) {
       setError('Please fill in all fields')
+      return
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
+    // Password validation
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long')
       return
     }
 

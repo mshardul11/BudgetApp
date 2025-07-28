@@ -9,11 +9,6 @@ interface ProtectedRouteProps {
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { currentUser, loading } = useAuth()
 
-  useEffect(() => {
-    console.log('[ProtectedRoute] loading:', loading)
-    console.log('[ProtectedRoute] currentUser:', currentUser)
-  }, [loading, currentUser])
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center">
@@ -26,7 +21,6 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!currentUser) {
-    console.log('[ProtectedRoute] Redirecting to /login because user is not authenticated')
     return <Navigate to="/login" replace />
   }
 

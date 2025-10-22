@@ -61,8 +61,7 @@ export default defineConfig({
       'react-dom',
       'react-router-dom',
       'date-fns',
-      'lucide-react',
-      'react-firebase-hooks'
+      'lucide-react'
     ],
     exclude: ['firebase', 'recharts'] // Defer these for code splitting
   },

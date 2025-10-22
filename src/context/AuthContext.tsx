@@ -38,17 +38,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      console.log('[AuthContext] onAuthStateChanged:', user)
       setCurrentUser(user)
       setLoading(false)
     })
     return unsubscribe
   }, [])
-
-  useEffect(() => {
-    console.log('[AuthContext] currentUser:', currentUser)
-    console.log('[AuthContext] loading:', loading)
-  }, [currentUser, loading])
 
   const signInWithGoogle = async () => {
     try {
@@ -57,12 +51,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const credential = GoogleAuthProvider.credentialFromResult(result)
       if (credential) {
         // User signed in successfully
-        console.log('Google sign-in successful', result.user)
       }
       return result.user
     } catch (error: any) {
-      console.error('Google sign-in error:', error)
-      throw error
+      // Sanitize error message for security
+      const sanitizedError = new Error(
+        error.code === 'auth/popup-closed-by-user' 
+          ? 'Sign-in was cancelled'
+          : error.code === 'auth/popup-blocked'
+          ? 'Sign-in popup was blocked. Please allow popups for this site.'
+          : 'Failed to sign in with Google'
+      )
+      throw sanitizedError
     }
   }
 
@@ -73,46 +73,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const credential = FacebookAuthProvider.credentialFromResult(result)
       if (credential) {
         // User signed in successfully
-        console.log('Facebook sign-in successful', result.user)
       }
       return result.user
     } catch (error: any) {
-      console.error('Facebook sign-in error:', error)
-      throw error
+      // Sanitize error message for security
+      const sanitizedError = new Error(
+        error.code === 'auth/popup-closed-by-user' 
+          ? 'Sign-in was cancelled'
+          : error.code === 'auth/popup-blocked'
+          ? 'Sign-in popup was blocked. Please allow popups for this site.'
+          : 'Failed to sign in with Facebook'
+      )
+      throw sanitizedError
     }
   }
 
   const signUpWithEmail = async (email: string, password: string, displayName: string) => {
     try {
+      // Validate inputs
+      if (!email || !password || !displayName) {
+        throw new Error('All fields are required')
+      }
+      
+      if (password.length < 8) {
+        throw new Error('Password must be at least 8 characters long')
+      }
+      
       const result = await createUserWithEmailAndPassword(auth, email, password)
       // Update the user's display name
       await updateProfile(result.user, { displayName })
-      console.log('Email sign-up successful', result.user)
       return result.user
     } catch (error: any) {
-      console.error('Email sign-up error:', error)
-      throw error
+      // Sanitize error messages for security
+      const sanitizedError = new Error(
+        error.code === 'auth/email-already-in-use'
+          ? 'An account with this email already exists'
+          : error.code === 'auth/weak-password'
+          ? 'Password is too weak'
+          : error.code === 'auth/invalid-email'
+          ? 'Invalid email address'
+          : 'Failed to create account'
+      )
+      throw sanitizedError
     }
   }
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
+      // Validate inputs
+      if (!email || !password) {
+        throw new Error('Email and password are required')
+      }
+      
       const result = await signInWithEmailAndPassword(auth, email, password)
-      console.log('Email sign-in successful', result.user)
       return result.user
     } catch (error: any) {
-      console.error('Email sign-in error:', error)
-      throw error
+      // Sanitize error messages for security
+      const sanitizedError = new Error(
+        error.code === 'auth/user-not-found'
+          ? 'No account found with this email'
+          : error.code === 'auth/wrong-password'
+          ? 'Incorrect password'
+          : error.code === 'auth/invalid-email'
+          ? 'Invalid email address'
+          : error.code === 'auth/too-many-requests'
+          ? 'Too many failed attempts. Please try again later.'
+          : 'Failed to sign in'
+      )
+      throw sanitizedError
     }
   }
 
   const logout = async () => {
     try {
       await signOut(auth)
-      console.log('User signed out successfully')
     } catch (error) {
-      console.error('Sign-out error:', error)
-      throw error
+      throw new Error('Failed to sign out')
     }
   }
 

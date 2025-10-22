@@ -155,15 +155,24 @@ export function BudgetProvider({ children }: { children: React.ReactNode }) {
       if (savedData) {
         try {
           const parsedData = JSON.parse(savedData)
-          // Ensure categories are properly structured
-          if (!parsedData.categories || !Array.isArray(parsedData.categories) || parsedData.categories.length === 0) {
-            console.log('Fixing missing or invalid categories in localStorage data')
-            const defaultData = generateCurrentMonthData()
-            parsedData.categories = defaultData.categories
+          
+          // Fix missing or invalid categories
+          if (!parsedData.categories || !Array.isArray(parsedData.categories)) {
+            parsedData.categories = [
+              { id: 'food', name: 'Food & Dining', type: 'expense', color: '#FF6B6B', icon: '🍽️' },
+              { id: 'transport', name: 'Transportation', type: 'expense', color: '#4ECDC4', icon: '🚗' },
+              { id: 'entertainment', name: 'Entertainment', type: 'expense', color: '#45B7D1', icon: '🎬' },
+              { id: 'shopping', name: 'Shopping', type: 'expense', color: '#96CEB4', icon: '🛍️' },
+              { id: 'health', name: 'Healthcare', type: 'expense', color: '#FFEAA7', icon: '🏥' },
+              { id: 'utilities', name: 'Utilities', type: 'expense', color: '#DDA0DD', icon: '⚡' },
+              { id: 'income', name: 'Income', type: 'income', color: '#98D8C8', icon: '💰' }
+            ]
           }
+          
           dispatch({ type: 'LOAD_DATA', payload: parsedData })
         } catch (error) {
-          console.error('Error loading saved data:', error)
+          // If localStorage data is corrupted, clear it
+          localStorage.removeItem('budget-app-data')
         }
       }
     }

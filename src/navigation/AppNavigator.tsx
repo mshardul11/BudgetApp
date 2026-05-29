@@ -4,7 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'
 import { LayoutDashboard, TrendingUp, TrendingDown, PieChart, Target, User, BarChart3, Briefcase } from 'lucide-react-native'
 import { useAuth } from '../context/AuthContext'
-import { ActivityIndicator, View } from 'react-native'
 import { colors } from '../theme'
 
 import LoginScreen from '../screens/LoginScreen'
@@ -118,15 +117,7 @@ function MainNavigator() {
 }
 
 export default function AppNavigator() {
-  const { currentUser, loading } = useAuth()
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.white }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    )
-  }
+  const { currentUser } = useAuth()
 
   return (
     <NavigationContainer>
